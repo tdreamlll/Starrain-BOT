@@ -117,3 +117,12 @@ performance:
   
   # Database connection pool size
   db_pool_size: 10
+
+# MySQL configuration for plugins (optional)
+mysql:
+  host: "127.0.0.1"
+  port: 3306
+  user: "root"
+  password: "your_password"
+  database: "starrain_bot"
+  charset: "utf8mb4"
