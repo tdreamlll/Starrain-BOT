@@ -1,6 +1,8 @@
 from typing import Set, Optional
 from enum import Enum
 
+from src.utils.db import Database
+
 
 class PermissionLevel(Enum):
     """权限级别"""
@@ -13,9 +15,19 @@ class PermissionLevel(Enum):
 class PermissionManager:
     """权限管理器"""
     
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, db: Optional[Database] = None):
         self.config = config
-        self.admin_qqs: Set[int] = set(config.get('admins', []))
+        self.db = db or Database()
+        # 优先从数据库读取管理员列表，如果数据库为空则退回配置文件中的 admins
+        db_admins = set(self.db.list_admins())
+        config_admins = set(config.get('admins', []))
+        self.admin_qqs: Set[int] = db_admins or config_admins
+
+        # 如果数据库中还没有管理员，但配置文件里有，则写入一次
+        if not db_admins and config_admins:
+            for qq in config_admins:
+                self.db.add_admin(qq)
+
         self.enable_group_permission = config.get('enable_group_permission', True)
         self.group_admin_permissions = config.get('group_admin_permissions', [])
     
@@ -51,10 +63,14 @@ class PermissionManager:
     def add_admin(self, qq: int):
         """添加BOT管理员"""
         self.admin_qqs.add(qq)
+        if self.db:
+            self.db.add_admin(qq)
     
     def remove_admin(self, qq: int):
         """移除BOT管理员"""
         self.admin_qqs.discard(qq)
+        if self.db:
+            self.db.remove_admin(qq)
     
     def has_permission(self, qq: int, permission: str, group_id: Optional[int] = None, group_role: Optional[str] = None) -> bool:
         """检查是否具有特定权限"""
