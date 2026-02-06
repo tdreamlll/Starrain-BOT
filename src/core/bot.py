@@ -5,6 +5,7 @@ from ..core.permission import PermissionManager
 from ..core.plugin_manager import PluginManager
 from ..utils.logger import get_logger
 from ..utils.renderer import ImageRenderer
+from ..utils.db import Database
 from ..event import parse_event, Event
 
 
@@ -17,7 +18,9 @@ class Bot:
         
         # 初始化各个组件
         self.logger = get_logger(config['log'])
-        self.permission_manager = PermissionManager(config['permission'])
+        # 数据库：默认使用 save/bot.db
+        self.db = Database()
+        self.permission_manager = PermissionManager(config['permission'], self.db)
         self.plugin_manager = PluginManager(config['plugin'])
         self.renderer = ImageRenderer(config['renderer'])
         
