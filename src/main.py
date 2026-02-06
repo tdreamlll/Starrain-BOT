@@ -121,6 +121,75 @@ Starrain-BOT 命令列表:
             return
         
         command = args[0]
+
+        # 管理员管理命令（持久化到数据库）
+        if command == '/add_admin':
+            try:
+                qq = int(args[1])
+            except (ValueError, IndexError):
+                await bot.send_group_message(event.group_id, "✗ 请输入有效的 QQ 号，例如：/add_admin 123456789")
+                return
+
+            bot.permission_manager.add_admin(qq)
+            await bot.send_group_message(event.group_id, f"✓ 已将 {qq} 添加为 BOT 管理员（已写入数据库）")
+            return
+
+        if command == '/remove_admin':
+            try:
+                qq = int(args[1])
+            except (ValueError, IndexError):
+                await bot.send_group_message(event.group_id, "✗ 请输入有效的 QQ 号，例如：/remove_admin 123456789")
+                return
+
+            bot.permission_manager.remove_admin(qq)
+            await bot.send_group_message(event.group_id, f"✓ 已将 {qq} 从 BOT 管理员中移除（已更新数据库）")
+            return
+
+        # 群配置相关命令（持久化到数据库的 group_configs 表）
+        if command == '/set_group_cfg':
+            if len(args) < 3:
+                await bot.send_group_message(
+                    event.group_id,
+                    "✗ 用法：/set_group_cfg <key> <value>"
+                )
+                return
+
+            key = args[1]
+            value = " ".join(args[2:])
+            bot.db.set_group_config(event.group_id, key, value)
+            await bot.send_group_message(
+                event.group_id,
+                f"✓ 已为本群设置配置项：{key} = {value}"
+            )
+            return
+
+        if command == '/get_group_cfg':
+            key = args[1]
+            value = bot.db.get_group_config(event.group_id, key)
+            if value is None:
+                await bot.send_group_message(
+                    event.group_id,
+                    f"ℹ 本群尚未设置配置项：{key}"
+                )
+            else:
+                await bot.send_group_message(
+                    event.group_id,
+                    f"本群配置 {key} = {value}"
+                )
+            return
+
+        if command == '/list_group_cfg':
+            configs = bot.db.list_group_configs(event.group_id)
+            if not configs:
+                await bot.send_group_message(event.group_id, "ℹ 本群暂无配置项")
+                return
+
+            lines = ["本群配置列表："]
+            for k, v in configs.items():
+                lines.append(f"{k} = {v}")
+            await bot.send_group_message(event.group_id, "\n".join(lines))
+            return
+
         plugin_name = args[1] if len(args) > 1 else None
         
         if command == '/enable' and plugin_name:
