@@ -1,119 +1,119 @@
-# Starrain-BOT Configuration Template
-# Copy this file to config.yaml and modify the settings
+# Starrain-BOT 配置模板
+# 将此文件复制为 config.yaml 并修改配置
 
-# OneBot Configuration
+# OneBot配置
 onebot:
-  # Connection type (choose one): ws, reverse_ws, http
-  # ws: Bot connects to NapCat WebSocket server (forward connection)
-  # reverse_ws: NapCat connects to bot WebSocket server (reverse connection)
-  # http: Use HTTP API to call NapCat
+  # 连接类型 (只能选择一种): ws, reverse_ws, http
+  # ws: 主动连接NapCat的WebSocket服务器 (正向连接)
+  # reverse_ws: NapCat主动连接到机器人的WebSocket服务器 (反向连接)
+  # http: 使用HTTP API调用NapCat
   connection_type: "http"
   
-  # Forward WebSocket configuration (for connection_type: ws)
+  # 正向WebSocket配置 (connection_type为ws时使用)
   url: "ws://localhost:3001"
   
-  # Access token (leave empty if not set in NapCat)
+  # 访问令牌 (NapCat中未设置则留空)
   access_token: ""
   
-  # HTTP configuration (for connection_type: http)
+  # HTTP配置 (connection_type为http时使用)
   http_url: "http://localhost:3000"
   
-  # Reverse WebSocket configuration (for connection_type: reverse_ws)
+  # 反向WebSocket配置 (connection_type为reverse_ws时使用)
   reverse_ws_url: "ws://localhost:3002"
   
-  # Heartbeat interval (seconds)
+  # 心跳间隔 (秒)
   heartbeat_interval: 5
 
-# Bot Configuration
+# 机器人配置
 bot:
-  # Bot QQ number (MUST CHANGE THIS to your bot's QQ)
+  # 机器人QQ号 (必须修改为你的机器人QQ号)
   qq: 123456789
   
-  # Auto reconnect
+  # 自动重连
   auto_reconnect: true
   
-  # Reconnect interval (milliseconds)
+  # 重连间隔 (毫秒)
   reconnect_interval: 5000
   
-  # Max reconnect attempts (-1 for unlimited)
+  # 最大重连次数 (-1为无限制)
   max_reconnect_attempts: 10
   
-  # Load all plugins on startup
+  # 启动时加载所有插件
   load_all_on_startup: true
 
-# Permission Management
+# 权限管理
 permission:
-  # List of BOT admin QQ numbers
-  # Add your QQ here to get admin privileges
+  # BOT管理员QQ号列表
+  # 在此处添加你的QQ号以获取管理员权限
   admins:
     - 987654321
   
-  # Enable group permission system
+  # 启用群权限系统
   enable_group_permission: true
   
-  # Extra permissions for group admins
+  # 群管理员的额外权限
   group_admin_permissions:
     - kick_member
     - mute_member
 
-# Plugin Configuration
+# 插件配置
 plugin:
-  # Plugin directory
+  # 插件目录
   dir: "./plugins"
   
-  # Auto load plugins on startup
+  # 启动时自动加载插件
   auto_load: true
   
-  # Enable hot reload (reload plugin when file is modified)
+  # 启用热重载 (文件修改时重新加载插件)
   hot_reload: true
   
-  # Hot reload interval (seconds)
+  # 热重载间隔 (秒)
   hot_reload_interval: 2
   
-  # Plugin metadata file
+  # 插件元数据文件
   metadata_file: "plugin_metadata.json"
 
-# Log Configuration
+# 日志配置
 log:
-  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
   level: "INFO"
   
-  # Log file path
+  # 日志文件路径
   file: "logs/bot.log"
   
-  # Output to console
+  # 控制台输出
   console: true
   
-  # Color output
+  # 彩色输出
   color: true
 
-# Image Rendering Configuration
+# 图片渲染配置
 renderer:
-  # Cache directory
+  # 缓存目录
   cache_dir: "./cache"
   
-  # Max cache size
+  # 最大缓存数量
   max_cache_size: 100
   
-  # Default image width
+  # 默认图片宽度
   default_width: 800
   
-  # Default image height
+  # 默认图片高度
   default_height: 600
   
-  # Cache expire time (seconds)
+  # 缓存过期时间 (秒)
   cache_expire: 3600
 
-# Performance Optimization
+# 性能优化
 performance:
-  # Async event processing
+  # 异步事件处理
   async_events: true
   
-  # Event queue size
+  # 事件队列大小
   event_queue_size: 1000
   
-  # Worker threads
+  # 工作线程数
   worker_threads: 4
   
-  # Database connection pool size
+  # 数据库连接池大小
   db_pool_size: 10

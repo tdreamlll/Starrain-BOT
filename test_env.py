@@ -171,7 +171,7 @@ def main():
     else:
         print_error("部分检查未通过，请修复上述问题。")
         print("\n获取更多帮助:")
-        print("  - 阅读 WINDOWS_STARTUP.md (Windows用户)")
+        print("  - 阅读 项目文档")
         print("  - 使用 start_debug.bat 进行诊断")
         print("  - 查看 README.md 安装指南")
     

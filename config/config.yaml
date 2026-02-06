@@ -1,45 +1,49 @@
+# Starrain-BOT 配置模板
+# 将此文件复制为 config.yaml 并修改配置
+
 # OneBot配置
 onebot:
   # 连接类型 (只能选择一种): ws, reverse_ws, http
-  # ws: 正向WebSocket - 机器人主动连接到NapCat
-  # reverse_ws: 反向WebSocket - NapCat主动连接到机器人
-  # http: HTTP API - 通过HTTP接口调用
+  # ws: 主动连接NapCat的WebSocket服务器 (正向连接)
+  # reverse_ws: NapCat主动连接到机器人的WebSocket服务器 (反向连接)
+  # http: 使用HTTP API调用NapCat
   connection_type: "http"
-  
-  # 正向WS配置 (connection_type为ws时使用)
+
+  # 正向WebSocket配置 (connection_type为ws时使用)
   url: "ws://localhost:3001"
-  
-  # 访问令牌 (NapCat中设置了令牌则填写)
+
+  # 访问令牌 (NapCat中未设置则留空)
   access_token: ""
-  
+
   # HTTP配置 (connection_type为http时使用)
   http_url: "http://localhost:3000"
-  
-  # 反向WS配置 (connection_type为reverse_ws时使用)
+
+  # 反向WebSocket配置 (connection_type为reverse_ws时使用)
   reverse_ws_url: "ws://localhost:3002"
-  
+
   # 心跳间隔 (秒)
   heartbeat_interval: 5
 
 # 机器人配置
 bot:
-  # 机器人QQ号 (请修改为你的机器人QQ号)
+  # 机器人QQ号 (必须修改为你的机器人QQ号)
   qq: 123456789
   # 自动重连
   auto_reconnect: true
   # 重连间隔 (毫秒)
   reconnect_interval: 5000
-  # 最大重连次数 (-1为无限)
+  # 最大重连次数 (-1为无限制)
   max_reconnect_attempts: 10
   # 启动时加载所有插件
   load_all_on_startup: true
 
 # 权限管理
 permission:
-  # BOT管理员QQ列表 (请添加你自己的QQ号)
+  # BOT管理员QQ号列表
+  # 在此处添加你的QQ号以获取管理员权限
   admins:
     - 987654321
-  # 启用群权限
+  # 启用群权限系统
   enable_group_permission: true
   # 群管理员的额外权限
   group_admin_permissions:
@@ -50,9 +54,9 @@ permission:
 plugin:
   # 插件目录
   dir: "./plugins"
-  # 自动加载
+  # 启动时自动加载插件
   auto_load: true
-  # 热重载
+  # 启用热重载 (文件修改时重新加载插件)
   hot_reload: true
   # 热重载间隔 (秒)
   hot_reload_interval: 2
@@ -63,7 +67,7 @@ plugin:
 log:
   # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
   level: "INFO"
-  # 日志文件
+  # 日志文件路径
   file: "logs/bot.log"
   # 控制台输出
   console: true
@@ -76,9 +80,9 @@ renderer:
   cache_dir: "./cache"
   # 最大缓存数量
   max_cache_size: 100
-  # 默认宽度
+  # 默认图片宽度
   default_width: 800
-  # 默认高度
+  # 默认图片高度
   default_height: 600
   # 缓存过期时间 (秒)
   cache_expire: 3600
