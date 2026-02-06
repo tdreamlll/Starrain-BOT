@@ -1,0 +1,31 @@
+{
+  "onebot": {
+    "url": "ws://localhost:3001",
+    "accessToken": "",
+    "enableHttp": true,
+    "httpUrl": "http://localhost:3000",
+    "enableReverseWs": false,
+    "reverseWsUrl": "ws://localhost:3002"
+  },
+  "bot": {
+    "qq": 123456789,
+    "autoReconnect": true,
+    "reconnectInterval": 5000,
+    "maxReconnectAttempts": 10
+  },
+  "permission": {
+    "admins": [987654321],
+    "enableGroupPermission": true
+  },
+  "plugin": {
+    "dir": "./plugins",
+    "autoLoad": true,
+    "hotReload": true
+  },
+  "renderer": {
+    "cacheDir": "./cache",
+    "maxCacheSize": 100,
+    "defaultWidth": 800,
+    "defaultHeight": 600
+  }
+}

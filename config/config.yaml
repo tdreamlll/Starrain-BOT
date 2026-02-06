@@ -1,0 +1,95 @@
+# OneBot配置
+onebot:
+  # 连接类型 (只能选择一种): ws, reverse_ws, http
+  # ws: 正向WebSocket - 机器人主动连接到NapCat
+  # reverse_ws: 反向WebSocket - NapCat主动连接到机器人
+  # http: HTTP API - 通过HTTP接口调用
+  connection_type: "http"
+  
+  # 正向WS配置 (connection_type为ws时使用)
+  url: "ws://localhost:3001"
+  
+  # 访问令牌 (NapCat中设置了令牌则填写)
+  access_token: ""
+  
+  # HTTP配置 (connection_type为http时使用)
+  http_url: "http://localhost:3000"
+  
+  # 反向WS配置 (connection_type为reverse_ws时使用)
+  reverse_ws_url: "ws://localhost:3002"
+  
+  # 心跳间隔 (秒)
+  heartbeat_interval: 5
+
+# 机器人配置
+bot:
+  # 机器人QQ号 (请修改为你的机器人QQ号)
+  qq: 123456789
+  # 自动重连
+  auto_reconnect: true
+  # 重连间隔 (毫秒)
+  reconnect_interval: 5000
+  # 最大重连次数 (-1为无限)
+  max_reconnect_attempts: 10
+  # 启动时加载所有插件
+  load_all_on_startup: true
+
+# 权限管理
+permission:
+  # BOT管理员QQ列表 (请添加你自己的QQ号)
+  admins:
+    - 987654321
+  # 启用群权限
+  enable_group_permission: true
+  # 群管理员的额外权限
+  group_admin_permissions:
+    - kick_member
+    - mute_member
+
+# 插件配置
+plugin:
+  # 插件目录
+  dir: "./plugins"
+  # 自动加载
+  auto_load: true
+  # 热重载
+  hot_reload: true
+  # 热重载间隔 (秒)
+  hot_reload_interval: 2
+  # 插件元数据文件
+  metadata_file: "plugin_metadata.json"
+
+# 日志配置
+log:
+  # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO"
+  # 日志文件
+  file: "logs/bot.log"
+  # 控制台输出
+  console: true
+  # 彩色输出
+  color: true
+
+# 图片渲染配置
+renderer:
+  # 缓存目录
+  cache_dir: "./cache"
+  # 最大缓存数量
+  max_cache_size: 100
+  # 默认宽度
+  default_width: 800
+  # 默认高度
+  default_height: 600
+  # 缓存过期时间 (秒)
+  cache_expire: 3600
+
+# 性能优化
+performance:
+  # 异步事件处理
+  async_events: true
+  # 事件队列大小
+  event_queue_size: 1000
+  # 工作线程数
+  worker_threads: 4
+  # 数据库连接池大小
+  db_pool_size: 10
