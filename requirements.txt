@@ -6,3 +6,4 @@ colorama>=0.4.6
 pyyaml>=6.0.1
 rich>=13.7.0
 aiofiles>=24.1.0
+pymysql>=1.1.0
