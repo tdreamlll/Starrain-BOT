@@ -7,6 +7,8 @@ import json
 from datetime import datetime, timedelta
 import asyncio
 
+_renderer_instance = None
+
 try:
     from pyppeteer import launch
     PUPPETEER_AVAILABLE = True
@@ -444,3 +446,154 @@ class ImageRenderer:
         self.set_cache(cache_key, data)
         
         return f"file:///{self._get_cache_path(cache_key).absolute()}"
+
+
+# 全局辅助函数
+def get_renderer(config: dict = None) -> ImageRenderer:
+    """获取图片渲染器实例（单例模式）
+    
+    Args:
+        config: 渲染器配置，首次调用时需要提供
+        
+    Returns:
+        ImageRenderer: 图片渲染器实例
+    """
+    global _renderer_instance
+    if _renderer_instance is None and config:
+        _renderer_instance = ImageRenderer(config)
+    return _renderer_instance
+
+
+async def render_text(text: str, width: int = 800, height: int = 400,
+                     font_size: int = 32, font_color: str = '#000000',
+                     bg_color: str = '#FFFFFF') -> str:
+    """快速渲染文字图片（便捷函数）
+    
+    Args:
+        text: 要渲染的文字
+        width: 图片宽度
+        height: 图片高度
+        font_size: 字体大小
+        font_color: 字体颜色
+        bg_color: 背景颜色
+        
+    Returns:
+        str: 图片路径（file:///格式）
+    """
+    if _renderer_instance is None:
+        raise RuntimeError("渲染器未初始化，请先调用 get_renderer(config)")
+    
+    return await _renderer_instance.render_text(
+        text, width, height, font_size, font_color, bg_color
+    )
+
+
+async def render_card(title: str, content: str, width: int = 800, height: int = 600,
+                      theme: str = 'default') -> str:
+    """快速渲染卡片图片（便捷函数）
+    
+    Args:
+        title: 卡片标题
+        content: 卡片内容
+        width: 图片宽度
+        height: 图片高度
+        theme: 主题（default/dark/green）
+        
+    Returns:
+        str: 图片路径（file:///格式）
+    """
+    if _renderer_instance is None:
+        raise RuntimeError("渲染器未初始化，请先调用 get_renderer(config)")
+    
+    return await _renderer_instance.render_card(title, content, width, height, theme)
+
+
+async def render_list(items: list, title: str = None, width: int = 800, height: int = 600,
+                      theme: str = 'default') -> str:
+    """快速渲染列表（便捷函数）
+    
+    Args:
+        items: 列表项
+        title: 标题
+        width: 图片宽度
+        height: 图片高度
+        theme: 主题
+        
+    Returns:
+        str: 图片路径（file:///格式）
+    """
+    if _renderer_instance is None:
+        raise RuntimeError("渲染器未初始化，请先调用 get_renderer(config)")
+    
+    content = '<br>'.join(f'• {item}' for item in items)
+    return await _renderer_instance.render_card(title or '列表', content, width, height, theme)
+
+
+async def render_table(headers: list, rows: list, title: str = None,
+                      width: int = 800, height: int = 600) -> str:
+    """快速渲染表格（便捷函数）
+    
+    Args:
+        headers: 表头
+        rows: 数据行
+        title: 标题
+        width: 图片宽度
+        height: 图片高度
+        
+    Returns:
+        str: 图片路径（file:///格式）
+    """
+    if _renderer_instance is None:
+        raise RuntimeError("渲染器未初始化，请先调用 get_renderer(config)")
+    
+    table_html = '<table style="border-collapse: collapse; width: 100%;">'
+    
+    if headers:
+        table_html += '<tr>'
+        for header in headers:
+            table_html += f'<th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2; text-align: left;">{header}</th>'
+        table_html += '</tr>'
+    
+    for row in rows:
+        table_html += '<tr>'
+        for cell in row:
+            table_html += f'<td style="border: 1px solid #ddd; padding: 8px;">{cell}</td>'
+        table_html += '</tr>'
+    
+    table_html += '</table>'
+    
+    html = f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{
+                width: {width}px;
+                height: {height}px;
+                background: #FFFFFF;
+                font-family: "Microsoft YaHei", Arial, sans-serif;
+                padding: 20px;
+                display: flex;
+                flex-direction: column;
+            }}
+            .title {{
+                font-size: 24px;
+                font-weight: bold;
+                margin-bottom: 20px;
+                text-align: center;
+            }}
+            .content {{
+                flex: 1;
+                overflow: auto;
+            }}
+        </style>
+    </head>
+    <body>
+        {f'<div class="title">{title}</div>' if title else ''}
+        <div class="content">{table_html}</div>
+    </body>
+    </html>
+    '''
+    
+    return await _renderer_instance.render_html(html, width, height)
