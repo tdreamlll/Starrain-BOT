@@ -1,5 +1,40 @@
 import logging
+import sys
 from pathlib import Path
+
+class ColoredFormatter(logging.Formatter):
+    """彩色日志格式化器（使用 ANSI 颜色码）"""
+    
+    # ANSI 颜色码
+    COLORS = {
+        logging.DEBUG: '\033[36m',      # 青色
+        logging.INFO: '\033[32m',       # 绿色
+        logging.WARNING: '\033[33m',    # 黄色
+        logging.ERROR: '\033[31m',      # 红色
+        logging.CRITICAL: '\033[41m',   # 红色背景
+    }
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    
+    def __init__(self, fmt=None, datefmt=None, use_color=True):
+        super().__init__(fmt, datefmt)
+        self.use_color = use_color
+    
+    def format(self, record):
+        levelname = record.levelname
+        levelno = record.levelno
+        
+        if self.use_color:
+            # 获取颜色
+            color_start = self.COLORS.get(levelno, '')
+            # 应用颜色到 levelname
+            colored_levelname = f"{color_start}{self.BOLD}{levelname}{self.RESET}"
+            # 设置 levelname（保持固定宽度）
+            record.levelname = colored_levelname.ljust(8)
+        else:
+            record.levelname = levelname.ljust(8)
+        
+        return super().format(record)
 
 
 class ColorLogger:
@@ -21,10 +56,17 @@ class ColorLogger:
         logger.setLevel(getattr(logging, self.level))
         
         if self.console_enabled:
-            stream_handler = logging.StreamHandler()
+            stream_handler = logging.StreamHandler(sys.stdout)
             stream_handler.setLevel(getattr(logging, self.level))
-            stream_handler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)-8s %(message)s', datefmt='%m/%d/%y %H:%M:%S'))
-            stream_handler.flush = lambda: None
+            stream_handler.flush = lambda: sys.stdout.flush()
+            
+            # 使用彩色格式化器
+            use_color = self.config.get('color', True)
+            stream_handler.setFormatter(ColoredFormatter(
+                '[%(asctime)s] %(levelname)-8s %(message)s',
+                datefmt='%m/%d/%y %H:%M:%S',
+                use_color=use_color
+            ))
             logger.addHandler(stream_handler)
         
         return logger
@@ -49,37 +91,34 @@ class ColorLogger:
     def info(self, message: str):
         """信息日志"""
         self.logger.info(message)
-        self.logger.handlers[0].flush() if self.logger.handlers else None
     
     def warning(self, message: str):
         """警告日志"""
         self.logger.warning(message)
-        self.logger.handlers[0].flush() if self.logger.handlers else None
     
     def error(self, message: str):
         """错误日志"""
         self.logger.error(message)
-        self.logger.handlers[0].flush() if self.logger.handlers else None
     
     def critical(self, message: str):
         """严重错误日志"""
         self.logger.critical(message)
-        self.logger.handlers[0].flush() if self.logger.handlers else None
     
     def success(self, message: str):
+        """成功信息"""
         self.info(f"✓ {message}")
     
-    def print(self, message: str, color: str = "white"):
-        pass
-    
     def print_info(self, message: str):
-        pass
+        """打印信息"""
+        self.info(f"ℹ {message}")
     
     def print_warning(self, message: str):
-        pass
+        """打印警告"""
+        self.warning(f"⚠ {message}")
     
     def print_error(self, message: str):
-        pass
+        """打印错误"""
+        self.error(f"✗ {message}")
 
 
 _logger_instance = None
