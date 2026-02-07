@@ -76,6 +76,8 @@ log:
 
 # 图片渲染配置
 renderer:
+  # 渲染引擎: puppeteer, PIL
+  engine: "puppeteer"
   # 缓存目录
   cache_dir: "./cache"
   # 最大缓存数量
@@ -86,6 +88,20 @@ renderer:
   default_height: 600
   # 缓存过期时间 (秒)
   cache_expire: 3600
+  # Puppeteer浏览器配置
+  puppeteer:
+    # 使用无头模式
+    headless: true
+    # 等待网络空闲
+    wait_network_idle: true
+    # 页面加载超时 (毫秒)
+    timeout: 30000
+    # 字体设置
+    fonts:
+      # 默认字体
+      default: '"Microsoft YaHei", Arial, sans-serif'
+      # 标题字体
+      title: '"Microsoft YaHei Bold", Arial Bold, sans-serif'
 
 # 性能优化
 performance:

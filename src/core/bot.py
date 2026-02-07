@@ -218,6 +218,7 @@ class Bot:
         """启动机器人"""
         self._running = True
         self.logger.info(f"机器人启动中... QQ: {self.qq}")
+        await asyncio.sleep(0.3)
         
         # 连接所有适配器
         for adapter in self.adapters:
@@ -227,6 +228,7 @@ class Bot:
                     asyncio.create_task(adapter.start_server())
                 else:
                     success = await adapter.connect()
+                    await asyncio.sleep(0.5)
                     if success:
                         self.logger.success(f"{adapter.__class__.__name__} 初始化完成")
                     else:
@@ -248,6 +250,10 @@ class Bot:
         
         # 停止插件管理器
         self.plugin_manager.stop()
+        
+        # 关闭图片渲染器浏览器
+        if hasattr(self.renderer, 'close_browser'):
+            await self.renderer.close_browser()
         
         self.logger.success("机器人已停止")
     

@@ -221,20 +221,28 @@ async def main():
             logger.info("请升级 Python 到 3.8 或更高版本")
             sys.exit(1)
         
+        await asyncio.sleep(0.5)
+        
         # 加载配置
         logger.info("正在加载配置...")
         config = load_config()
+        await asyncio.sleep(0.5)
         logger.success("配置已加载")
+        await asyncio.sleep(0.5)
         
         # 创建机器人实例
         logger.info("正在初始化机器人...")
         bot = Bot(config)
+        await asyncio.sleep(0.5)
         logger.success(f"机器人已初始化 QQ: {config['bot']['qq']}")
+        await asyncio.sleep(0.5)
         
         # 注册命令
         logger.info("正在注册命令...")
         await register_commands(bot)
+        await asyncio.sleep(0.5)
         logger.success("命令已注册")
+        await asyncio.sleep(0.5)
         
         # 启动机器人
         logger.info("正在启动机器人... 按 Ctrl+C 停止")

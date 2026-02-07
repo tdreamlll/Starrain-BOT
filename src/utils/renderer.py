@@ -1,15 +1,21 @@
 import hashlib
 import base64
 from pathlib import Path
-from typing import Optional, Tuple
-from PIL import Image, ImageDraw, ImageFont
+from typing import Optional
 import io
 import json
 from datetime import datetime, timedelta
+import asyncio
+
+try:
+    from pyppeteer import launch
+    PUPPETEER_AVAILABLE = True
+except ImportError:
+    PUPPETEER_AVAILABLE = False
 
 
 class ImageRenderer:
-    """图片渲染器"""
+    """基于 Puppeteer 的图片渲染器"""
     
     def __init__(self, config: dict):
         self.config = config
@@ -22,8 +28,35 @@ class ImageRenderer:
         self.cache: dict = {}
         self.cache_metadata: dict = {}
         
+        self.browser = None
+        self.browser_launched = False
+        
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._load_cache_metadata()
+    
+    async def _ensure_browser(self):
+        """确保浏览器已启动"""
+        if not PUPPETEER_AVAILABLE:
+            raise ImportError("pyppeteer 未安装，请运行: pip install pyppeteer")
+            
+        if self.browser is None or not self.browser_launched:
+            self.browser = await launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--disable-setuid-sandbox'
+                ]
+            )
+            self.browser_launched = True
+    
+    async def close_browser(self):
+        """关闭浏览器"""
+        if self.browser:
+            await self.browser.close()
+            self.browser = None
+            self.browser_launched = False
     
     def _load_cache_metadata(self):
         """加载缓存元数据"""
@@ -57,7 +90,6 @@ class ImageRenderer:
         for key in expired_keys:
             self.delete_cache(key)
         
-        # 清理超过大小限制的缓存
         if len(self.cache) > self.max_cache_size:
             sorted_keys = sorted(
                 self.cache_metadata.keys(),
@@ -79,7 +111,6 @@ class ImageRenderer:
         """获取缓存"""
         cache_path = self._get_cache_path(cache_key)
         
-        # 检查缓存是否存在
         if cache_path not in self.cache and cache_path.exists():
             try:
                 with open(cache_path, 'rb') as f:
@@ -99,7 +130,6 @@ class ImageRenderer:
             with open(cache_path, 'wb') as f:
                 f.write(data)
             
-            # 更新元数据
             now = datetime.now()
             self.cache_metadata[cache_key] = {
                 'created_at': now.isoformat(),
@@ -108,7 +138,6 @@ class ImageRenderer:
             }
             self._save_cache_metadata()
             
-            # 清理过期缓存
             self._cleanup_cache()
         except Exception as e:
             print(f"保存缓存失败: {e}")
@@ -126,11 +155,76 @@ class ImageRenderer:
         if cache_key in self.cache_metadata:
             del self.cache_metadata[cache_key]
     
+    def _generate_html(self, text: str, width: int, height: int, 
+                      font_size: int = 24, font_color: str = '#000000',
+                      bg_color: str = '#FFFFFF', padding: int = 20,
+                      font_family: str = '"Microsoft YaHei", Arial, sans-serif') -> str:
+        """生成 HTML"""
+        return f'''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                * {{
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }}
+                body {{
+                    width: {width}px;
+                    height: {height}px;
+                    background-color: {bg_color};
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-family: {font_family};
+                    font-size: {font_size}px;
+                    color: {font_color};
+                    padding: {padding}px;
+                    word-wrap: break-word;
+                    overflow: hidden;
+                }}
+                .content {{
+                    text-align: center;
+                    max-width: 100%;
+                    max-height: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="content">{text}</div>
+        </body>
+        </html>
+        '''
+    
+    async def _screenshot_from_html(self, html: str, width: int, height: int) -> bytes:
+        """从 HTML 截图"""
+        await self._ensure_browser()
+        
+        page = await self.browser.newPage()
+        
+        try:
+            await page.setViewport({'width': width, 'height': height})
+            await page.setContent(html, {'waitUntil': 'networkidle0'})
+            
+            screenshot = await page.screenshot({
+                'type': 'png',
+                'encoding': 'binary'
+            })
+            
+            return screenshot
+        finally:
+            await page.close()
+    
     async def render_text(self, text: str, width: Optional[int] = None, height: Optional[int] = None,
                         font_size: int = 24, font_color: str = '#000000',
                         bg_color: str = '#FFFFFF', padding: int = 20) -> str:
         """渲染文字到图片，返回图片路径"""
-        cache_key = self.generate_cache('text', text, width, height, font_size, font_color, bg_color, padding)
+        cache_key = self.generate_cache_key('text', text, width, height, font_size, font_color, bg_color, padding)
         
         cached = self.get_cache(cache_key)
         if cached:
@@ -139,49 +233,152 @@ class ImageRenderer:
         w = width or self.default_width
         h = height or self.default_height
         
-        img = Image.new('RGB', (w, h), bg_color)
-        draw = ImageDraw.Draw(img)
-        
-        try:
-            font = ImageFont.truetype("msyh.ttc", font_size)
-        except Exception:
-            try:
-                font = ImageFont.truetype("Arial.ttf", font_size)
-            except Exception:
-                font = ImageFont.load_default()
-        
-        text_bbox = draw.textbbox((padding, padding), text, font=font)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_height = text_bbox[3] - text_bbox[1]
-        
-        x = (w - text_width) // 2
-        y = (h - text_height) // 2
-        
-        draw.text((x, y), text, font=font, fill=font_color)
-        
-        buffer = io.BytesIO()
-        img.save(buffer, format='PNG')
-        data = buffer.getvalue()
+        html = self._generate_html(text, w, h, font_size, font_color, bg_color, padding)
+        data = await self._screenshot_from_html(html, w, h)
         
         self.set_cache(cache_key, data)
         
         return f"file:///{self._get_cache_path(cache_key).absolute()}"
     
     async def render_from_template(self, template: str, context: dict, 
-                                   width: Optional[int] = None, height: Optional[int] = None) -> str:
-        """从模板渲染图片（简单实现）"""
-        cache_key = self.generate_cache('template', template, json.dumps(context), width, height)
+                                   width: Optional[int] = None, height: Optional[int] = None,
+                                   styles: Optional[str] = None) -> str:
+        """从模板渲染图片（完整 HTML 模板）"""
+        cache_key = self.generate_cache_key('template', template, json.dumps(context), width, height, styles)
         
         cached = self.get_cache(cache_key)
         if cached:
             return f"file:///{self._get_cache_path(cache_key).absolute()}"
         
-        # 简单实现：替换变量并渲染文字
-        for key, value in context.items():
-            template = template.replace(f'{{{{{key}}}}}', str(value))
+        w = width or self.default_width
+        h = height or self.default_height
         
-        result = await self.render_text(template, width, height)
-        return result
+        html = template
+        for key, value in context.items():
+            html = html.replace({{'' + key + ''}}, str(value))
+        
+        if styles:
+            html = f'<style>{styles}</style>' + html
+        
+        data = await self._screenshot_from_html(html, w, h)
+        
+        self.set_cache(cache_key, data)
+        
+        return f"file:///{self._get_cache_path(cache_key).absolute()}"
+    
+    async def render_html(self, html: str, width: Optional[int] = None, 
+                         height: Optional[int] = None) -> str:
+        """直接渲染 HTML"""
+        cache_key = self.generate_cache_key('html', html, width, height)
+        
+        cached = self.get_cache(cache_key)
+        if cached:
+            return f"file:///{self._get_cache_path(cache_key).absolute()}"
+        
+        w = width or self.default_width
+        h = height or self.default_height
+        
+        data = await self._screenshot_from_html(html, w, h)
+        
+        self.set_cache(cache_key, data)
+        
+        return f"file:///{self._get_cache_path(cache_key).absolute()}"
+    
+    async def render_card(self, title: str, content: str, 
+                         width: Optional[int] = None, height: Optional[int] = None,
+                         theme: str = 'default') -> str:
+        """渲染卡片样式图片
+        
+        Args:
+            title: 卡片标题
+            content: 卡片内容
+            width: 宽度
+            height: 高度
+            theme: 主题色
+        """
+        cache_key = self.generate_cache_key('card', title, content, width, height, theme)
+        
+        cached = self.get_cache(cache_key)
+        if cached:
+            return f"file:///{self._get_cache_path(cache_key).absolute()}"
+        
+        w = width or self.default_width
+        h = height or self.default_height
+        
+        themes = {
+            'default': {
+                'bg': '#FFFFFF',
+                'title_bg': '#4A90E2',
+                'title_color': '#FFFFFF',
+                'content_color': '#333333'
+            },
+            'dark': {
+                'bg': '#1A1A1A',
+                'title_bg': '#5B5B5B',
+                'title_color': '#FFFFFF',
+                'content_color': '#E0E0E0'
+            },
+            'green': {
+                'bg': '#FFFFFF',
+                'title_bg': '#52C41A',
+                'title_color': '#FFFFFF',
+                'content_color': '#333333'
+            }
+        }
+        
+        theme_config = themes.get(theme, themes['default'])
+        
+        html = f'''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                * {{
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }}
+                body {{
+                    width: {w}px;
+                    height: {h}px;
+                    background-color: {theme_config['bg']};
+                    font-family: "Microsoft YaHei", Arial, sans-serif;
+                    display: flex;
+                    flex-direction: column;
+                    overflow: hidden;
+                }}
+                .header {{
+                    background-color: {theme_config['title_bg']};
+                    color: {theme_config['title_color']};
+                    padding: 20px;
+                    font-size: 24px;
+                    font-weight: bold;
+                    text-align: center;
+                    line-height: 1.5;
+                }}
+                .content {{
+                    color: {theme_config['content_color']};
+                    padding: 20px;
+                    font-size: 16px;
+                    line-height: 1.8;
+                    flex: 1;
+                    overflow: auto;
+                    word-wrap: break-word;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="header">{title}</div>
+            <div class="content">{content}</div>
+        </body>
+        </html>
+        '''
+        
+        data = await self._screenshot_from_html(html, w, h)
+        self.set_cache(cache_key, data)
+        
+        return f"file:///{self._get_cache_path(cache_key).absolute()}"
     
     def get_image_base64(self, image_path: str) -> str:
         """获取图片的Base64编码"""
@@ -199,62 +396,51 @@ class ImageRenderer:
         
         return ""
     
-    def create_composite_image(self, images: list, layout: str = 'vertical', 
-                               spacing: int = 10, bg_color: str = '#FFFFFF') -> str:
+    async def create_composite_image(self, images: list, layout: str = 'vertical',
+                                   spacing: int = 10, bg_color: str = '#FFFFFF') -> str:
         """创建合成图片"""
-        cache_key = self.generate_cache('composite', len(images), layout, spacing, bg_color, 
-                                      *[img for img in images])
+        cache_key = self.generate_cache_key('composite', len(images), layout, spacing, bg_color,
+                                           *[img for img in images])
         
         cached = self.get_cache(cache_key)
         if cached:
             return f"file:///{self._get_cache_path(cache_key).absolute()}"
         
-        loaded_images = []
-        for img_path in images:
-            if isinstance(img_path, str) and img_path.startswith('file:///'):
-                img_path = img_path[8:]
-            
-            try:
-                img = Image.open(img_path)
-                loaded_images.append(img)
-            except Exception as e:
-                print(f"加载图片失败: {e}")
-        
-        if not loaded_images:
-            return ""
+        img_tags = ''.join(f'<img src="{img}" style="display:block; margin:5px 0;">' for img in images)
         
         if layout == 'vertical':
-            total_width = max(img.width for img in loaded_images)
-            total_height = sum(img.height for img in loaded_images) + spacing * (len(loaded_images) - 1)
+            styles = f'''
+                body {{ display: flex; flex-direction: column; align-items: center; 
+                         gap: {spacing}px; background: {bg_color}; }}
+                img {{ max-width: {self.default_width}px; }}
+            '''
         elif layout == 'horizontal':
-            total_width = sum(img.width for img in loaded_images) + spacing * (len(loaded_images) - 1)
-            total_height = max(img.height for img in loaded_images)
+            styles = f'''
+                body {{ display: flex; flex-direction: row; align-items: center; justify-content: center;
+                         gap: {spacing}px; background: {bg_color}; }}
+            '''
         else:
-            grid_cols = int(len(loaded_images) ** 0.5) + 1
-            total_width = 0
-            total_height = 0
-            for i, img in enumerate(loaded_images):
-                if i % grid_cols == 0:
-                    total_height += img.height
-                    total_width = max(total_width, img.width)
-                else:
-                    total_width += img.width + spacing
+            styles = f'''
+                body {{ background: {bg_color}; padding: 20px; }}
+            '''
         
-        composite = Image.new('RGB', (total_width, total_height), bg_color)
+        html = f'''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                body {{ width: {self.default_width}px; height: {self.default_height}px;
+                       overflow: auto; display: flex; font-family: sans-serif; }}
+                {styles}
+            </style>
+        </head>
+        <body>{img_tags}</body>
+        </html>
+        '''
         
-        y = 0
-        x = 0
-        for img in loaded_images:
-            composite.paste(img, (x, y))
-            if layout == 'vertical':
-                y += img.height + spacing
-            elif layout == 'horizontal':
-                x += img.width + spacing
-        
-        buffer = io.BytesIO()
-        composite.save(buffer, format='PNG')
-        data = buffer.getvalue()
-        
+        data = await self._screenshot_from_html(html, self.default_width, self.default_height)
         self.set_cache(cache_key, data)
         
         return f"file:///{self._get_cache_path(cache_key).absolute()}"

@@ -89,20 +89,39 @@ log:
 
 # 图片渲染配置
 renderer:
+  # 渲染引擎: puppeteer, PIL
+  engine: "puppeteer"
   # 缓存目录
   cache_dir: "./cache"
-  
   # 最大缓存数量
   max_cache_size: 100
-  
   # 默认图片宽度
   default_width: 800
-  
   # 默认图片高度
   default_height: 600
-  
   # 缓存过期时间 (秒)
   cache_expire: 3600
+  # Puppeteer Browser Configuration (for plugins that use MySQL)
+  # Puppeteer浏览器配置 (用于插件)
+  puppeteer:
+    # Use headless mode
+    # 使用无头模式
+    headless: true
+    # Wait for network to be idle
+    # 等待网络空闲
+    wait_network_idle: true
+    # Page load timeout (milliseconds)
+    # 页面加载超时 (毫秒)
+    timeout: 30000
+    # Font settings
+    # 字体设置
+    fonts:
+      # Default font
+      # 默认字体
+      default: '"Microsoft YaHei", Arial, sans-serif'
+      # Title font
+      # 标题字体
+      title: '"Microsoft YaHei Bold", Arial Bold, sans-serif'
 
 # 性能优化
 performance:

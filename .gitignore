@@ -33,3 +33,6 @@ Thumbs.db
 # Plugin Metadata
 plugins/plugin_metadata.json
 cache/metadata.json
+
+# Data
+save/

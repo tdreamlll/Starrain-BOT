@@ -1,7 +1,4 @@
 import logging
-from rich.console import Console
-from rich.logging import RichHandler
-from rich.text import Text
 from pathlib import Path
 
 
@@ -13,9 +10,7 @@ class ColorLogger:
         self.level = config.get('level', 'INFO').upper()
         self.log_file = config.get('file', 'logs/bot.log')
         self.console_enabled = config.get('console', True)
-        self.color_enabled = config.get('color', True)
         
-        self.console = Console(theme=None if self.color_enabled else "no_color")
         self.logger = self._setup_logger()
         
         self._setup_log_file()
@@ -26,14 +21,11 @@ class ColorLogger:
         logger.setLevel(getattr(logging, self.level))
         
         if self.console_enabled:
-            console_handler = RichHandler(
-                console=self.console,
-                rich_tracebacks=True,
-                show_time=True,
-                show_path=False
-            )
-            console_handler.setLevel(getattr(logging, self.level))
-            logger.addHandler(console_handler)
+            stream_handler = logging.StreamHandler()
+            stream_handler.setLevel(getattr(logging, self.level))
+            stream_handler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)-8s %(message)s', datefmt='%m/%d/%y %H:%M:%S'))
+            stream_handler.flush = lambda: None
+            logger.addHandler(stream_handler)
         
         return logger
     
@@ -57,46 +49,37 @@ class ColorLogger:
     def info(self, message: str):
         """信息日志"""
         self.logger.info(message)
+        self.logger.handlers[0].flush() if self.logger.handlers else None
     
     def warning(self, message: str):
         """警告日志"""
         self.logger.warning(message)
+        self.logger.handlers[0].flush() if self.logger.handlers else None
     
     def error(self, message: str):
         """错误日志"""
         self.logger.error(message)
+        self.logger.handlers[0].flush() if self.logger.handlers else None
     
     def critical(self, message: str):
         """严重错误日志"""
         self.logger.critical(message)
+        self.logger.handlers[0].flush() if self.logger.handlers else None
     
     def success(self, message: str):
-        """成功信息"""
-        if self.console_enabled:
-            success_text = Text.from_markup(f"[bold green]✓[/bold green] {message}")
-            self.console.print(success_text)
-        else:
-            self.info(f"✓ {message}")
+        self.info(f"✓ {message}")
     
     def print(self, message: str, color: str = "white"):
-        """直接打印消息"""
-        if self.console_enabled and self.color_enabled:
-            colored_text = Text.from_markup(f"[{color}]{message}[/{color}]")
-            self.console.print(colored_text)
-        else:
-            self.console.print(message)
+        pass
     
     def print_info(self, message: str):
-        """打印信息（青色）"""
-        self.print(f"ℹ {message}", "cyan")
+        pass
     
     def print_warning(self, message: str):
-        """打印警告（黄色）"""
-        self.print(f"⚠ {message}", "yellow")
+        pass
     
     def print_error(self, message: str):
-        """打印错误（红色）"""
-        self.print(f"✗ {message}", "red")
+        pass
 
 
 _logger_instance = None
