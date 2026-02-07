@@ -58,13 +58,7 @@ def load_config(config_path: str = 'config/config.yaml') -> dict:
 
 
 def print_banner():
-    """打印启动横幅"""
-    print("""
-    ╔══════════════════════════════════════════╗
-    ║      Starrain-BOT v1.0.0               ║
-    ║         基于OneBot v11                  ║
-    ╚══════════════════════════════════════════╝
-    """)
+    pass
 
 
 async def register_commands(bot: Bot):
@@ -216,43 +210,42 @@ Starrain-BOT 命令列表:
 
 async def main():
     """主函数"""
+    from src.utils.logger import get_logger
+    logger = get_logger({'level': 'INFO', 'console': True, 'color': True, 'file': 'logs/bot.log'})
+    
     try:
-        print_banner()
-        
         # 检查Python版本
         python_version = sys.version_info
         if python_version.major < 3 or (python_version.major == 3 and python_version.minor < 8):
-            print(f"错误: 需要 Python 3.8+，当前版本: {sys.version.split()[0]}")
-            print("请升级 Python 到 3.8 或更高版本")
+            logger.error(f"需要 Python 3.8+，当前版本: {sys.version.split()[0]}")
+            logger.info("请升级 Python 到 3.8 或更高版本")
             sys.exit(1)
         
         # 加载配置
-        print("正在加载配置...")
+        logger.info("正在加载配置...")
         config = load_config()
-        print("[完成] 配置已加载")
+        logger.success("配置已加载")
         
         # 创建机器人实例
-        print("正在初始化机器人...")
+        logger.info("正在初始化机器人...")
         bot = Bot(config)
-        print(f"[完成] 机器人已初始化 QQ: {config['bot']['qq']}")
+        logger.success(f"机器人已初始化 QQ: {config['bot']['qq']}")
         
         # 注册命令
-        print("正在注册命令...")
+        logger.info("正在注册命令...")
         await register_commands(bot)
-        print("[完成] 命令已注册")
+        logger.success("命令已注册")
         
         # 启动机器人
-        print("\n" + "=" * 50)
-        print("正在启动机器人... 按 Ctrl+C 停止")
-        print("=" * 50 + "\n")
+        logger.info("正在启动机器人... 按 Ctrl+C 停止")
         
         try:
             await bot.run()
         except KeyboardInterrupt:
-            print("\n\n收到停止信号，正在关闭...")
+            logger.info("收到停止信号，正在关闭...")
             await bot.stop()
         except Exception as e:
-            print(f"\n错误: {e}")
+            logger.error(f"启动失败: {e}")
             import traceback
             traceback.print_exc()
             try:
@@ -261,7 +254,7 @@ async def main():
                 pass
     
     except Exception as e:
-        print(f"\n错误: {e}")
+        logger.error(f"初始化失败: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -271,9 +264,11 @@ if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n程序已停止")
+        pass
     except Exception as e:
-        print(f"\n严重错误: {e}")
+        from src.utils.logger import get_logger
+        logger = get_logger({'level': 'INFO', 'console': True, 'color': True, 'file': 'logs/bot.log'})
+        logger.error(f"严重错误: {e}")
         import traceback
         traceback.print_exc()
         input("\n按回车键退出...")

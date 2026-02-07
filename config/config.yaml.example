@@ -1,5 +1,5 @@
-# Starrain-BOT 配置模板
-# 将此文件复制为 config.yaml 并修改配置
+# Starrain-BOT Configuration Template
+# Copy this file to config.yaml and modify the settings
 
 # OneBot配置
 onebot:
@@ -118,11 +118,17 @@ performance:
   # 数据库连接池大小
   db_pool_size: 10
 
-# MySQL configuration for plugins (optional)
+# MySQL Database Configuration (for plugins that use MySQL)
 mysql:
+  # Database host address
   host: "127.0.0.1"
+  # Database port
   port: 3306
+  # Database username
   user: "root"
-  password: "your_password"
+  # Database password (set your MySQL password here)
+  password: ""
+  # Database name
   database: "starrain_bot"
+  # Character set
   charset: "utf8mb4"

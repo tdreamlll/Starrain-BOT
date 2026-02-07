@@ -204,7 +204,6 @@ class Bot:
                     'params': params
                 })
         
-        self.logger.warning("没有可用的适配器发送消息")
         return False
     
     async def send_group_message(self, group_id: int, message: Any) -> bool:
@@ -218,7 +217,7 @@ class Bot:
     async def start(self):
         """启动机器人"""
         self._running = True
-        self.logger.success(f"机器人启动中... QQ: {self.qq}")
+        self.logger.info(f"机器人启动中... QQ: {self.qq}")
         
         # 连接所有适配器
         for adapter in self.adapters:
@@ -229,12 +228,9 @@ class Bot:
                 else:
                     success = await adapter.connect()
                     if success:
-                        if isinstance(adapter, HTTPAdapter):
-                            self.logger.success(f"✓ {adapter.__class__.__name__} 初始化完成")
-                        else:
-                            self.logger.success(f"✓ {adapter.__class__.__name__} 连接成功")
+                        self.logger.success(f"{adapter.__class__.__name__} 初始化完成")
                     else:
-                        self.logger.error(f"✗ {adapter.__class__.__name__} 连接失败")
+                        self.logger.error(f"{adapter.__class__.__name__} 连接失败")
             except Exception as e:
                 self.logger.error(f"{adapter.__class__.__name__} 启动错误: {e}")
         
