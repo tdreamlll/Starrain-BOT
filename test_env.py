@@ -26,6 +26,10 @@ def print_warning(text):
     """打印警告信息"""
     print(f"[警告] {text}")
 
+def print_info(text):
+    """打印信息"""
+    print(f"[信息] {text}")
+
 def check_python_version():
     """检查Python版本"""
     print_header("Python版本检查")
@@ -58,23 +62,46 @@ def check_modules():
     print_header("模块依赖检查")
     
     required_modules = [
+        ("websockets", "websockets"),
+        ("aiohttp", "aiohttp"),
+        ("watchdog", "watchdog"),
+        ("Pillow", "PIL"),
+        ("colorama", "colorama"),
         ("yaml", "yaml"),
-        ("asyncio", None),
-        ("aiohttp", None),
-        ("websockets", None),
-        ("rich", None),
-        ("watchdog", None),
-        ("PIL", None),
-        ("aiofiles", None),
-        ("colorama", None),
+        ("rich", "rich"),
+        ("aiofiles", "aiofiles"),
+        ("pymysql", "pymysql"),
+        ("asyncio", "asyncio"),
+    ]
+    
+    optional_modules = [
+        ("pyppeteer", "pyppeteer"),
     ]
     
     all_ok = True
+    missing_modules = []
+    
+    print("必需模块:")
     for module_name, import_name in required_modules:
         import_name = import_name or module_name
         ok = check_module(module_name, import_name)
         if not ok:
             all_ok = False
+            missing_modules.append(module_name)
+    
+    if not all_ok:
+        print_warning(f"缺少 {len(missing_modules)} 个必需模块")
+        print_error("请运行以下命令安装:")
+        print("  pip install -r requirements.txt")
+    
+    print("\n可选模块 (图片渲染功能):")
+    for module_name, import_name in optional_modules:
+        import_name = import_name or module_name
+        ok = check_module(module_name, import_name)
+        if not ok:
+            print_warning(f"图片渲染将不可用")
+            print_info("  如需使用图片渲染，请安装:")
+            print_info("    pip install pyppeteer")
     
     return all_ok
 
@@ -165,7 +192,7 @@ def main():
         print_success("所有检查通过！现在可以启动机器人了。")
         print("\n推荐启动命令:")
         if os.name == 'nt':
-            print("  Windows: start_quick.bat")
+            print("  Windows: start.bat")
         else:
             print("  Linux/Mac: bash start.sh")
     else:
