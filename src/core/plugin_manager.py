@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Dict, Set, Optional, Callable, Any, List
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
+from src.utils.logger import get_logger
+
+def _get_logger():
+    return get_logger()
 
 
 class PluginMetadata:
@@ -52,7 +56,7 @@ class Plugin:
                 
                 return True
         except Exception as e:
-            print(f"插件加载失败 {self.name}: {e}")
+            _get_logger().error(f"插件加载失败 {self.name}: {e}")
             return False
     
     def unload(self):
@@ -83,7 +87,7 @@ class Plugin:
                 if asyncio.iscoroutine(result):
                     await result
             except Exception as e:
-                print(f"插件事件处理错误 {self.name}: {e}")
+                _get_logger().error(f"插件事件处理错误 {self.name}: {e}")
 
 
 class PluginEventHandler(FileSystemEventHandler):
@@ -139,7 +143,7 @@ class PluginManager:
                     data = json.load(f)
                     self.enabled_plugins = set(data.get('enabled_plugins', []))
         except Exception as e:
-            print(f"加载插件元数据失败: {e}")
+            _get_logger().error(f"加载插件元数据失败: {e}")
     
     def _save_metadata(self):
         """保存插件元数据（存于 data 目录）"""
@@ -150,7 +154,7 @@ class PluginManager:
                     'enabled_plugins': list(self.enabled_plugins)
                 }, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"保存插件元数据失败: {e}")
+            _get_logger().error(f"保存插件元数据失败: {e}")
 
     def _load_group_plugins(self):
         try:
@@ -168,7 +172,7 @@ class PluginManager:
             with open(self._group_plugins_file, 'w', encoding='utf-8') as f:
                 json.dump(self._group_plugins, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            print(f"保存群插件配置失败: {e}")
+            _get_logger().error(f"保存群插件配置失败: {e}")
 
     def set_group_plugin_enabled(self, group_id: int, plugin_name: str, enabled: bool) -> None:
         gk = str(group_id)
@@ -214,7 +218,7 @@ class PluginManager:
             file_path = self.plugin_dir / f"{plugin_name}.py"
         
         if not file_path.exists():
-            print(f"插件文件不存在: {file_path}")
+            _get_logger().error(f"插件文件不存在: {file_path}")
             return False
         
         plugin = Plugin(file_path)
@@ -224,7 +228,7 @@ class PluginManager:
             if plugin_name in self.enabled_plugins:
                 self.enable_plugin(plugin_name)
             
-            print(f"✓ 插件加载成功: {plugin_name}")
+            _get_logger().success(f"插件加载成功: {plugin_name}")
             
             # 调用插件的on_load
             if hasattr(plugin.module, 'on_load'):
@@ -237,7 +241,7 @@ class PluginManager:
                         except RuntimeError:
                             asyncio.run(result)
                 except Exception as e:
-                    print(f"插件on_load错误 {plugin_name}: {e}")
+                    _get_logger().error(f"插件on_load错误 {plugin_name}: {e}")
             
             return True
         return False
@@ -260,11 +264,11 @@ class PluginManager:
                     except RuntimeError:
                         asyncio.run(result)
             except Exception as e:
-                print(f"插件on_unload错误 {plugin_name}: {e}")
+                _get_logger().warning(f"插件on_unload错误 {plugin_name}: {e}")
         
         plugin.unload()
         del self.plugins[plugin_name]
-        print(f"✓ 插件卸载成功: {plugin_name}")
+        _get_logger().success(f"插件卸载成功: {plugin_name}")
         return True
     
     def reload_plugin(self, plugin_name: str) -> bool:
@@ -285,10 +289,10 @@ class PluginManager:
                     except RuntimeError:
                         asyncio.run(result)
             except Exception as e:
-                print(f"插件on_reload错误 {plugin_name}: {e}")
+                _get_logger().warning(f"插件on_reload错误 {plugin_name}: {e}")
         
         if plugin.reload():
-            print(f"✓ 插件重载成功: {plugin_name}")
+            _get_logger().success(f"插件重载成功: {plugin_name}")
             return True
         return False
     
@@ -300,7 +304,7 @@ class PluginManager:
         self.plugins[plugin_name].enabled = True
         self.enabled_plugins.add(plugin_name)
         self._save_metadata()
-        print(f"✓ 插件已启用: {plugin_name}")
+        _get_logger().success(f"插件已启用: {plugin_name}")
         return True
     
     def disable_plugin(self, plugin_name: str) -> bool:
@@ -311,7 +315,7 @@ class PluginManager:
         self.plugins[plugin_name].enabled = False
         self.enabled_plugins.discard(plugin_name)
         self._save_metadata()
-        print(f"✓ 插件已禁用: {plugin_name}")
+        _get_logger().success(f"插件已禁用: {plugin_name}")
         return True
     
     def get_plugin(self, plugin_name: str) -> Optional[Plugin]:
@@ -333,7 +337,7 @@ class PluginManager:
         """插件文件修改回调"""
         if self.hot_reload:
             plugin_name = plugin_path.stem
-            print(f"检测到插件修改: {plugin_name}")
+            _get_logger().info(f"检测到插件修改: {plugin_name}")
             self.reload_plugin(plugin_name)
     
     def stop(self):

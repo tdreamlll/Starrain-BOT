@@ -3,6 +3,10 @@ import websockets
 import json
 from typing import Dict, Any, Optional
 from .base import BaseAdapter
+from src.utils.logger import get_logger
+
+def _get_logger():
+    return get_logger()
 
 
 class WebSocketAdapter(BaseAdapter):
@@ -22,7 +26,7 @@ class WebSocketAdapter(BaseAdapter):
             if self.access_token:
                 headers['Authorization'] = f'Bearer {self.access_token}'
             
-            print(f"[WS] 正在连接 {self.url}...")
+            _get_logger().info(f"WS正在连接 {self.url}...")
             self.websocket = await websockets.connect(
                 self.url,
                 additional_headers=headers,
@@ -31,14 +35,14 @@ class WebSocketAdapter(BaseAdapter):
             )
             
             self.connected = True
-            print(f"[WS] ✓ 连接成功")
+            _get_logger().success("WS已连接")
             
             self._receive_task = asyncio.create_task(self._receive_loop())
             
             return True
             
         except Exception as e:
-            print(f"[WS] ✗ 连接失败: {e}")
+            _get_logger().error(f"WS连接失败: {e}")
             self.connected = False
             
             # 如果启用了自动重连，启动重连任务
@@ -62,12 +66,12 @@ class WebSocketAdapter(BaseAdapter):
             await self.websocket.close()
             self.websocket = None
         
-        print(f"[WS] 连接已断开")
+        _get_logger().info("WS连接已断开")
     
     async def send(self, data: Any) -> bool:
         """发送数据"""
         if not self.connected or not self.websocket:
-            print("WS未连接")
+            _get_logger().warning("WS未连接")
             return False
         
         try:
@@ -77,7 +81,7 @@ class WebSocketAdapter(BaseAdapter):
             await self.websocket.send(data)
             return True
         except Exception as e:
-            print(f"发送数据失败: {e}")
+            _get_logger().error(f"WS发送数据失败: {e}")
             return False
     
     async def receive(self) -> Optional[Dict[str, Any]]:
@@ -89,7 +93,6 @@ class WebSocketAdapter(BaseAdapter):
             message = await self.websocket.recv()
             return json.loads(message)
         except Exception as e:
-            print(f"接收数据失败: {e}")
             return None
     
     async def _receive_loop(self):

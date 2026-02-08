@@ -4,6 +4,9 @@
 """
 import asyncio
 from src.utils.renderer import render_card, render_list, render_table
+from src.utils.logger import get_logger
+
+logger = get_logger()
 
 # 插件元数据
 __plugin_metadata__ = {
@@ -15,11 +18,11 @@ __plugin_metadata__ = {
 
 
 async def on_load():
-    print(f"[插件] {__plugin_metadata__['name']} 加载成功")
+    logger.info(f"插件加载: {__plugin_metadata__['name']}")
 
 
 async def on_reload():
-    print(f"[插件] {__plugin_metadata__['name']} 已重载")
+    logger.info(f"插件重载: {__plugin_metadata__['name']}")
 
 
 def on_group_message(event, permission_level):

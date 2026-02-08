@@ -6,7 +6,10 @@ import io
 import json
 from datetime import datetime, timedelta
 import asyncio
+from src.utils.logger import get_logger
 
+def _get_logger():
+    return get_logger()
 _renderer_instance = None
 
 try:
@@ -77,7 +80,7 @@ class ImageRenderer:
             with open(metadata_file, 'w', encoding='utf-8') as f:
                 json.dump(self.cache_metadata, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"保存缓存元数据失败: {e}")
+            _get_logger().error(f"保存缓存元数据失败: {e}")
     
     def _cleanup_cache(self):
         """清理过期缓存"""
@@ -118,7 +121,7 @@ class ImageRenderer:
                 with open(cache_path, 'rb') as f:
                     self.cache[cache_key] = f.read()
             except Exception as e:
-                print(f"读取缓存失败: {e}")
+                _get_logger().warning(f"读取缓存失败: {e}")
                 return None
         
         return self.cache.get(cache_key)
@@ -142,7 +145,7 @@ class ImageRenderer:
             
             self._cleanup_cache()
         except Exception as e:
-            print(f"保存缓存失败: {e}")
+            _get_logger().error(f"保存缓存失败: {e}")
     
     def delete_cache(self, cache_key: str):
         """删除缓存"""
@@ -394,7 +397,7 @@ class ImageRenderer:
                     data = f.read()
                 return base64.b64encode(data).decode()
             except Exception as e:
-                print(f"读取图片失败: {e}")
+                _get_logger().warning(f"读取图片失败: {e}")
         
         return ""
     

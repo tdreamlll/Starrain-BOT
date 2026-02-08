@@ -7,8 +7,10 @@ from pathlib import Path
 try:
     import yaml
 except ImportError:
-    print("错误: PyYAML 未安装!")
-    print("请运行: pip install pyyaml")
+    from src.utils.logger import get_logger
+    logger = get_logger({'level': 'INFO', 'console': True, 'color': True, 'file': 'logs/bot.log'})
+    logger.error("PyYAML 未安装!")
+    logger.info("请运行: pip install pyyaml")
     sys.exit(1)
 
 project_root = Path(__file__).parent
@@ -20,48 +22,44 @@ try:
     from src.core.permission import PermissionLevel
     from src.utils.currency import get_currency_store
 except ImportError as e:
-    print(f"错误: 导入模块失败: {e}")
-    print("请确保所有依赖已安装")
-    print("运行: pip install -r requirements.txt")
+    from src.utils.logger import get_logger
+    logger = get_logger({'level': 'INFO', 'console': True, 'color': True, 'file': 'logs/bot.log'})
+    logger.error(f"导入模块失败: {e}")
+    logger.info("请确保所有依赖已安装")
+    logger.info("运行: pip install -r requirements.txt")
     sys.exit(1)
 
+from src.utils.logger import get_logger
+
+get_logger({'level': 'INFO', 'console': True, 'color': True, 'file': 'logs/bot.log'})
 
 def load_config(config_path: str = 'config/config.yaml') -> dict:
+    logger = get_logger()
     path = Path(config_path)
     if not path.is_absolute():
         path = project_root / path
     if not path.exists():
-        print(f"错误: 配置文件未找到: {config_path}")
+        logger.error(f"配置文件未找到: {config_path}")
         sys.exit(1)
     try:
         with open(path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
             if not config:
-                print("错误: 配置文件为空")
+                logger.error("配置文件为空")
                 sys.exit(1)
             if 'bot' not in config or 'qq' not in config['bot']:
-                print("错误: 配置无效 - 缺少 bot.qq")
+                logger.error("配置无效 - 缺少 bot.qq")
                 sys.exit(1)
             if 'onebot' not in config:
-                print("错误: 配置无效 - 缺少 onebot 部分")
+                logger.error("配置无效 - 缺少 onebot 部分")
                 sys.exit(1)
             return config
     except yaml.YAMLError as e:
-        print(f"错误: 解析配置文件失败: {e}")
+        logger.error(f"解析配置文件失败: {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"错误: 加载配置失败: {e}")
+        logger.error(f"加载配置失败: {e}")
         sys.exit(1)
-
-
-def print_banner():
-    print("""
-    ╔══════════════════════════════════════════╗
-    ║      Starrain-BOT v1.0.0               ║
-    ║         基于OneBot v11                  ║
-    ╚══════════════════════════════════════════╝
-    """)
-
 
 def _format_uptime(seconds: float) -> str:
     if seconds <= 0:
@@ -386,37 +384,36 @@ async def register_commands(bot: Bot):
 
 
 async def main():
+    logger = get_logger()
     try:
-        print_banner()
         if sys.version_info < (3, 8):
-            print("错误: 需要 Python 3.8+")
+            logger.error("需要 Python 3.8+")
             sys.exit(1)
-        print("正在加载配置...")
+        logger.info("正在加载配置...")
         config = load_config()
-        print("[完成] 配置已加载")
-        print("正在初始化机器人...")
+        logger.success("配置已加载")
+        logger.info("正在初始化机器人...")
         bot = Bot(config)
         bot._restart_requested = False
         bot._shutdown_requested = False
-        print(f"[完成] 机器人已初始化 QQ: {config['bot']['qq']}")
+        logger.success(f"机器人已初始化 QQ: {config['bot']['qq']}")
 
         if bot.permission_manager.self_check_and_ensure_developer_fallback():
-            print("[自检] 已将兜底开发者写入 5 级列表，正在重启…")
+            logger.warning("已将兜底开发者写入 5 级列表，正在重启…")
             os.execv(sys.executable, [sys.executable] + sys.argv)
 
-        print("正在注册命令...")
+        logger.info("正在注册命令...")
         await register_commands(bot)
-        print("[完成] 命令已注册")
-        print("\n" + "=" * 50)
-        print("正在启动机器人... 按 Ctrl+C 停止")
-        print("=" * 50 + "\n")
+        logger.success("命令已注册")
+        logger.info("正在启动机器人... 按 Ctrl+C 停止")
 
         try:
             await bot.run()
         except KeyboardInterrupt:
-            print("\n收到停止信号，正在关闭...")
+            logger.info("收到停止信号，正在关闭...")
             await bot.stop()
         except Exception as e:
+            logger.error(f"运行异常: {e}")
             import traceback
             traceback.print_exc()
             try:
@@ -425,9 +422,10 @@ async def main():
                 pass
 
         if getattr(bot, "_restart_requested", False):
-            print("执行重启…")
+            logger.info("执行重启…")
             os.execv(sys.executable, [sys.executable] + sys.argv)
     except Exception as e:
+        logger.error(f"初始化失败: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -437,8 +435,11 @@ if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n程序已停止")
+        logger = get_logger()
+        logger.info("程序已停止")
     except Exception as e:
+        logger = get_logger()
+        logger.error(f"严重错误: {e}")
         import traceback
         traceback.print_exc()
         input("\n按回车键退出...")

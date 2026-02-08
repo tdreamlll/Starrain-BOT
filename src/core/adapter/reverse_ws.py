@@ -3,6 +3,10 @@ import websockets
 import json
 from typing import Dict, Any, Optional
 from .base import BaseAdapter
+from src.utils.logger import get_logger
+
+def _get_logger():
+    return get_logger()
 
 
 class ReverseWebSocketAdapter(BaseAdapter):
@@ -27,7 +31,7 @@ class ReverseWebSocketAdapter(BaseAdapter):
                 pass
             return True
         except Exception as e:
-            print(f"[反向WS] 启动失败: {e}")
+            _get_logger().error(f"反向WS启动失败: {e}")
             return False
     
     async def disconnect(self):
@@ -36,12 +40,12 @@ class ReverseWebSocketAdapter(BaseAdapter):
         for client in self.clients:
             await client.close()
         self.clients.clear()
-        print(f"[反向WS] 已停止")
+        _get_logger().info("反向WS已停止")
     
     async def send(self, data: Any) -> bool:
         """发送数据到所有客户端"""
         if not self.clients:
-            print("没有连接的客户端")
+            _get_logger().warning("反向WS没有连接的客户端")
             return False
         
         try:
@@ -61,7 +65,7 @@ class ReverseWebSocketAdapter(BaseAdapter):
             
             return True
         except Exception as e:
-            print(f"发送数据失败: {e}")
+            _get_logger().error(f"反向WS发送数据失败: {e}")
             return False
     
     async def receive(self) -> Optional[Dict[str, Any]]:
@@ -71,10 +75,10 @@ class ReverseWebSocketAdapter(BaseAdapter):
     async def _handle_client(self, websocket, path):
         """处理客户端连接"""
         client_addr = websocket.remote_address
-        print(f"[反向WS] 新客户端连接: {client_addr}")
+        _get_logger().info(f"反向WS新客户端连接: {client_addr}")
         self.clients.add(websocket)
         self.connected = True
-        print(f"[反向WS] ✓ 已连接")
+        _get_logger().success("反向WS已连接")
         
         try:
             async for message in websocket:
@@ -82,19 +86,19 @@ class ReverseWebSocketAdapter(BaseAdapter):
                     data = json.loads(message)
                     post_type = data.get('post_type', 'unknown')
                     msg_detail = self._format_message(data)
-                    print(f"[反向WS] 收到{post_type}: {msg_detail}")
+                    _get_logger().info(f"反向WS收到{post_type}: {msg_detail}")
                     await self.emit_event(data)
                 except json.JSONDecodeError as e:
-                    print(f"[反向WS] JSON解析错误: {e}")
+                    _get_logger().error(f"反向WS JSON解析错误: {e}")
         except websockets.exceptions.ConnectionClosed:
-            print(f"[反向WS] 客户端断开连接: {client_addr}")
+            _get_logger().info(f"反向WS客户端断开连接: {client_addr}")
         except Exception as e:
-            print(f"[反向WS] 客户端处理错误: {e}")
+            _get_logger().error(f"反向WS客户端处理错误: {e}")
         finally:
             self.clients.discard(websocket)
             if not self.clients:
                 self.connected = False
-                print(f"[反向WS] 所有客户端已断开")
+                _get_logger().info("反向WS所有客户端已断开")
     
     def _format_message(self, data: Dict[str, Any]) -> str:
         """格式化消息内容用于日志显示"""
@@ -129,6 +133,6 @@ class ReverseWebSocketAdapter(BaseAdapter):
     
     async def start_server(self):
         """启动服务器"""
-        print(f"[反向WS] 正在启动服务器，监听端口: 3002...")
-        print(f"[反向WS] 等待客户端连接...")
+        _get_logger().info("反向WS正在启动服务器，监听端口: 3002...")
+        _get_logger().info("反向WS等待客户端连接...")
         await self.connect()

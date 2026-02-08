@@ -7,6 +7,9 @@ import re
 from datetime import date
 
 from src.utils.currency import get_currency_store
+from src.utils.logger import get_logger
+
+logger = get_logger()
 
 __plugin_metadata__ = {
     "name": "currency",
@@ -18,7 +21,7 @@ __plugin_metadata__ = {
 # 每日签到奖励
 DAILY_REWARD = 100
 async def on_load():
-    print(f"[插件] {__plugin_metadata__['name']} v{__plugin_metadata__['version']} 加载成功（JSON 货币，无需 MySQL）")
+    logger.info(f"插件加载: {__plugin_metadata__['name']} v{__plugin_metadata__['version']}（JSON 货币，无需 MySQL）")
 
 
 def on_group_message(event, permission_level):

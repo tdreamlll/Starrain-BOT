@@ -1,6 +1,10 @@
 import asyncio
 from abc import ABC, abstractmethod
 from typing import Callable, Optional, Any, Dict
+from src.utils.logger import get_logger
+
+def _get_logger():
+    return get_logger()
 
 
 class BaseAdapter(ABC):
@@ -49,28 +53,28 @@ class BaseAdapter(ABC):
                 if asyncio.iscoroutine(result):
                     await result
             except Exception as e:
-                print(f"事件处理错误: {e}")
+                _get_logger().error(f"事件处理错误: {e}")
     
     async def reconnect(self):
         """重连"""
         if self.reconnect_count >= self.max_reconnect_attempts and self.max_reconnect_attempts != -1:
-            print(f"[{self.adapter_name}] 已达到最大重连次数: {self.max_reconnect_attempts}")
+            _get_logger().warning(f"{self.adapter_name}已达到最大重连次数: {self.max_reconnect_attempts}")
             return False
         
         self.reconnect_count += 1
-        print(f"[{self.adapter_name}] 正在重连... ({self.reconnect_count}/{self.max_reconnect_attempts})")
+        _get_logger().info(f"{self.adapter_name}正在重连... ({self.reconnect_count}/{self.max_reconnect_attempts})")
         
         try:
             await asyncio.sleep(self.reconnect_interval / 1000)
             success = await self.connect()
             if success:
                 self.reconnect_count = 0
-                print(f"[{self.adapter_name}] 重连成功")
+                _get_logger().success(f"{self.adapter_name}重连成功")
                 return True
             else:
                 return await self.reconnect()
         except Exception as e:
-            print(f"[{self.adapter_name}] 重连失败: {e}")
+            _get_logger().error(f"{self.adapter_name}重连失败: {e}")
             return await self.reconnect()
     
     def is_connected(self) -> bool:

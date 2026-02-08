@@ -5,7 +5,9 @@
 import asyncio
 from src.core.permission import PermissionLevel
 from src.utils.renderer import render_text, render_card, render_list, render_table
+from src.utils.logger import get_logger
 
+logger = get_logger()
 
 # 插件元数据
 __plugin_metadata__ = {
@@ -18,12 +20,12 @@ __plugin_metadata__ = {
 
 async def on_load():
     """插件加载时调用"""
-    print(f"[插件] {__plugin_metadata__['name']} v{__plugin_metadata__['version']} 加载成功")
+    logger.info(f"插件加载: {__plugin_metadata__['name']} v{__plugin_metadata__['version']}")
 
 
 async def on_reload():
     """插件重载时调用"""
-    print(f"[插件] {__plugin_metadata__['name']} 已重载")
+    logger.info(f"插件重载: {__plugin_metadata__['name']}")
 
 
 def on_group_message(event, permission_level):

@@ -110,9 +110,9 @@ def check_configuration():
 
 def check_main_file():
     """检查主程序文件"""
-    main_file = Path("src/main.py")
+    main_file = Path("main.py")
     if not main_file.exists():
-        print_error("未找到主程序 src/main.py!")
+        print_error("未找到主程序 main.py!")
         return False
     
     print_success("主程序文件已存在")
@@ -144,7 +144,7 @@ def start_bot(python_exe):
     print()
 
     try:
-        result = subprocess.run([python_exe, "src/main.py"])
+        result = subprocess.run([python_exe, "main.py"])
         return result.returncode
     except KeyboardInterrupt:
         print("\n\n机器人已停止")

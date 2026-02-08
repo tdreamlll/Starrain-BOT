@@ -2,6 +2,10 @@ import asyncio
 import aiohttp
 from typing import Dict, Any, Optional
 from .base import BaseAdapter
+from src.utils.logger import get_logger
+
+def _get_logger():
+    return get_logger()
 
 
 class HTTPAdapter(BaseAdapter):
@@ -23,14 +27,14 @@ class HTTPAdapter(BaseAdapter):
                 timeout=aiohttp.ClientTimeout(total=30)
             )
             self.connected = True
-            print(f"✓ HTTP初始化成功: {self.url}")
+            _get_logger().success(f"HTTP初始化成功: {self.url}")
             
             # 启动轮询
             self._poll_task = asyncio.create_task(self._poll_loop())
             
             return True
         except Exception as e:
-            print(f"[HTTP] ✗ 连接失败: {e}")
+            _get_logger().error(f"HTTP初始化失败: {e}")
             self.connected = False
             
             # 如果启用了自动重连，启动重连任务
@@ -54,12 +58,12 @@ class HTTPAdapter(BaseAdapter):
             await self.session.close()
             self.session = None
         
-        print(f"[HTTP] 会话已关闭")
+        _get_logger().info("HTTP会话已关闭")
     
     async def send(self, data: Any) -> bool:
         """发送数据"""
         if not self.connected or not self.session:
-            print(f"[HTTP] 未初始化")
+            _get_logger().warning("HTTP未初始化")
             return False
         
         try:
@@ -69,13 +73,13 @@ class HTTPAdapter(BaseAdapter):
                 
                 if action and params:
                     msg_detail = self._format_message(action, params)
-                    print(f"[HTTP] 发送{action}: {msg_detail}")
+                    _get_logger().info(f"HTTP发送{action}: {msg_detail}")
                     result = await self.call_api(action, params)
                     return result is not None
             
             return False
         except Exception as e:
-            print(f"[HTTP] 发送数据失败: {e}")
+            _get_logger().error(f"HTTP发送数据失败: {e}")
             return False
     
     async def receive(self) -> Optional[Dict[str, Any]]:
@@ -93,10 +97,10 @@ class HTTPAdapter(BaseAdapter):
                 if result.get('retcode') == 0:
                     return result.get('data')
                 else:
-                    print(f"API调用失败: {result}")
+                    _get_logger().error(f"API调用失败: {result}")
                     return None
         except Exception as e:
-            print(f"API调用错误: {e}")
+            _get_logger().error(f"API调用错误: {e}")
             return None
     
     async def _poll_loop(self):
@@ -105,7 +109,7 @@ class HTTPAdapter(BaseAdapter):
             try:
                 await asyncio.sleep(1)
             except Exception as e:
-                print(f"[HTTP] 轮询错误: {e}")
+                _get_logger().error(f"HTTP轮询错误: {e}")
                 await asyncio.sleep(1)
     
     def _get_headers(self) -> Dict[str, str]:
@@ -164,11 +168,11 @@ class HTTPAdapter(BaseAdapter):
         while not self.connected and not self._stop_event.is_set():
             try:
                 if self.reconnect_count >= self.max_reconnect_attempts and self.max_reconnect_attempts != -1:
-                    print(f"[HTTP] 已达到最大重连次数，停止重连")
+                    _get_logger().warning("HTTP已达到最大重连次数，停止重连")
                     break
                 
                 self.reconnect_count += 1
-                print(f"[HTTP] 正在重连... ({self.reconnect_count}/{self.max_reconnect_attempts})")
+                _get_logger().info(f"HTTP正在重连... ({self.reconnect_count}/{self.max_reconnect_attempts})")
                 
                 await asyncio.sleep(self.reconnect_interval / 1000)
                 
@@ -179,7 +183,7 @@ class HTTPAdapter(BaseAdapter):
                         timeout=aiohttp.ClientTimeout(total=30)
                     )
                     self.connected = True
-                    print(f"[HTTP] ✓ 重连成功")
+                    _get_logger().success("HTTP重连成功")
                     
                     # 启动轮询
                     self._poll_task = asyncio.create_task(self._poll_loop())
@@ -187,8 +191,8 @@ class HTTPAdapter(BaseAdapter):
                     self.reconnect_count = 0
                     break
                 except Exception as e:
-                    print(f"[HTTP] 重连失败: {e}")
+                    _get_logger().error(f"HTTP重连失败: {e}")
                     
             except Exception as e:
-                print(f"[HTTP] 重连循环错误: {e}")
+                _get_logger().error(f"HTTP重连循环错误: {e}")
                 await asyncio.sleep(1)
