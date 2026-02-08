@@ -37,4 +37,4 @@ cache/metadata.json
 # Data
 save/
 /.vs
-/src
+/data
