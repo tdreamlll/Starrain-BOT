@@ -54,6 +54,8 @@ permission:
 plugin:
   # 插件目录
   dir: "./plugins"
+  # 插件数据目录（元数据及所有插件数据存放于此）
+  data_dir: "data"
   # 启动时自动加载插件
   auto_load: true
   # 启用热重载 (文件修改时重新加载插件)

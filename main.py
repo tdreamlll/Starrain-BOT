@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import sys
 import asyncio
 from pathlib import Path
@@ -10,13 +11,14 @@ except ImportError:
     print("请运行: pip install pyyaml")
     sys.exit(1)
 
-# 添加项目根目录到Python路径
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+project_root = Path(__file__).parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 try:
     from src.core import Bot
     from src.core.permission import PermissionLevel
+    from src.utils.currency import get_currency_store
 except ImportError as e:
     print(f"错误: 导入模块失败: {e}")
     print("请确保所有依赖已安装")
@@ -25,29 +27,24 @@ except ImportError as e:
 
 
 def load_config(config_path: str = 'config/config.yaml') -> dict:
-    """加载配置文件"""
     path = Path(config_path)
+    if not path.is_absolute():
+        path = project_root / path
     if not path.exists():
         print(f"错误: 配置文件未找到: {config_path}")
-        print("请在config目录创建配置文件")
         sys.exit(1)
-    
     try:
         with open(path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
             if not config:
                 print("错误: 配置文件为空")
                 sys.exit(1)
-            
-            # Validate config
             if 'bot' not in config or 'qq' not in config['bot']:
                 print("错误: 配置无效 - 缺少 bot.qq")
                 sys.exit(1)
-            
             if 'onebot' not in config:
                 print("错误: 配置无效 - 缺少 onebot 部分")
                 sys.exit(1)
-            
             return config
     except yaml.YAMLError as e:
         print(f"错误: 解析配置文件失败: {e}")
@@ -58,7 +55,6 @@ def load_config(config_path: str = 'config/config.yaml') -> dict:
 
 
 def print_banner():
-    """打印启动横幅"""
     print("""
     ╔══════════════════════════════════════════╗
     ║      Starrain-BOT v1.0.0               ║
@@ -67,201 +63,371 @@ def print_banner():
     """)
 
 
+def _format_uptime(seconds: float) -> str:
+    if seconds <= 0:
+        return "未启动"
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    d, h = divmod(h, 24)
+    if d > 0:
+        return f"{d}天{h}时{m}分"
+    if h > 0:
+        return f"{h}时{m}分{s}秒"
+    if m > 0:
+        return f"{m}分{s}秒"
+    return f"{s}秒"
+
+
+def _build_debug_message(bot, section: str):
+    pm = bot.permission_manager
+    uptime = _format_uptime(bot.uptime_seconds)
+
+    if section == "":
+        adapters = []
+        for a in bot.adapters:
+            name = a.__class__.__name__
+            ok = getattr(a, "connected", False) or (getattr(a, "is_connected", lambda: False)())
+            adapters.append(f"{name}:{'✓' if ok else '✗'}")
+        return (
+            "【Debug 总览】\n"
+            f"运行: {uptime} | QQ: {bot.qq}\n"
+            f"适配器: {', '.join(adapters)}\n"
+            f"3级: {len(pm.list_admins())} | 4级: {len(pm.list_owners())} | 5级: {len(pm.list_developers())}\n"
+            f"黑名单群: {len(pm.list_blacklisted_groups())} | 插件: {len(bot.plugin_manager.plugins)}\n"
+            f"货币缓存: {get_currency_store().get_debug_info()['cache_size']} 条"
+        )
+
+    if section == "system":
+        import platform
+        try:
+            import psutil
+            mem = psutil.virtual_memory()
+            mem_info = f"内存: 已用 {mem.percent}% | 可用 {mem.available // (1024*1024)}MB"
+        except ImportError:
+            mem_info = "内存: (安装 psutil 可显示)"
+        return (
+            "【Debug · System】\n"
+            f"Python: {sys.version.split()[0]} | {platform.system()} {platform.release()}\n"
+            f"CPU 核心: {os.cpu_count() or '?'}\n"
+            f"{mem_info}\n"
+            f"运行: {uptime}"
+        )
+
+    if section == "permission":
+        L3, L4, L5 = pm.list_admins(), pm.list_owners(), pm.list_developers()
+        black = pm.list_blacklisted_groups()
+        def _fmt(lst, cap=10):
+            if len(lst) <= cap:
+                return ",".join(map(str, lst)) or "无"
+            return ",".join(map(str, lst[:cap])) + f"…+{len(lst)-cap}"
+        return (
+            "【Debug · Permission】\n"
+            f"3级({len(L3)}): {_fmt(L3)}\n"
+            f"4级({len(L4)}): {_fmt(L4)}\n"
+            f"5级({len(L5)}): {_fmt(L5)}\n"
+            f"黑名单群({len(black)}): {_fmt(black)}"
+        )
+
+    if section == "plugins":
+        lines = ["【Debug · Plugins】"]
+        for name, plugin in sorted(bot.plugin_manager.plugins.items()):
+            enabled = name in bot.plugin_manager.enabled_plugins
+            ctx_ok = bot.plugin_manager.is_plugin_enabled_for_context(name, None)
+            ver = plugin.metadata.get("version", "?") if isinstance(plugin.metadata, dict) else getattr(plugin.metadata, "version", "?")
+            lines.append(f"  {'✓' if enabled else '✗'} {name} v{ver} (全局:{'开' if ctx_ok else '关'})")
+        return "\n".join(lines) if lines else "【Debug · Plugins】\n  无插件"
+
+    if section == "currency":
+        store = get_currency_store()
+        info = store.get_debug_info()
+        return (
+            "【Debug · Currency】\n"
+            f"内存缓存条数: {info['cache_size']}\n"
+            "数据目录: data/ | 分片: currency_0~31.json"
+        )
+
+    if section == "full":
+        return [
+            _build_debug_message(bot, ""),
+            _build_debug_message(bot, "system"),
+            _build_debug_message(bot, "permission"),
+            _build_debug_message(bot, "plugins"),
+            _build_debug_message(bot, "currency"),
+        ]
+
+    return ""
+
+
+def _help_text(level: PermissionLevel) -> str:
+    parts = [
+        "【1级】/help /version /plugins /currency_help",
+        "【1级】/balance /daily /pay — 货币（签到、转账）",
+    ]
+    if level >= PermissionLevel.GROUP_STAFF:
+        parts.append("【2级】/enable_grp <插件> /disable_grp <插件> — 本群插件开关")
+        parts.append("【2级】/mute <@某人|QQ> [分钟] — 禁言（默认1分钟，0=解除）")
+    if level >= PermissionLevel.BOT_ADMIN:
+        parts.append("【3级】/enable /disable /reload — 全局插件")
+        parts.append("【3级】/blacklist_add <群号> /blacklist_remove <群号>")
+        parts.append("【3级】/add_admin /remove_admin <QQ>")
+        parts.append("【3级】/set_currency <QQ> <金额> /add_currency <QQ> <增减> — 改他人数据（不能改同级或更高级）")
+    if level >= PermissionLevel.OWNER:
+        parts.append("【4级】/add_owner /remove_owner <QQ>；/restart /shutdown")
+    if level >= PermissionLevel.DEVELOPER:
+        parts.append("【5级】/add_developer /remove_developer <QQ>")
+        parts.append("【5级】/debug [system|permission|plugins|currency|full]")
+    return "\n".join(parts)
+
+
 async def register_commands(bot: Bot):
-    """注册命令处理器"""
-    
     @bot.on_group_message
-    async def handle_message(event, permission_level):
-        """处理群消息"""
-        # 只处理普通成员
-        if permission_level != PermissionLevel.MEMBER:
-            return
-        
-        message = event.raw_message
-        
-        # 示例命令
-        if message.startswith('/help'):
-            help_text = """
-Starrain-BOT 命令列表:
-/help - 查看帮助
-/version - 查看版本
-/plugins - 查看插件列表
-            
-管理员命令:
-/enable <插件名> - 启用插件
-/disable <插件名> - 禁用插件
-/reload <插件名> - 重载插件
-            """
-            await bot.send_group_message(event.group_id, help_text)
-        
-        elif message.startswith('/version'):
-            await bot.send_group_message(
-                event.group_id,
-                "Starrain-BOT v1.0.0 - 基于OneBot v11的Python机器人框架"
-            )
-        
-        elif message.startswith('/plugins'):
-            plugin_list = "已加载插件:\n"
-            for name, plugin in bot.plugin_manager.plugins.items():
-                status = "✓" if plugin.enabled else "✗"
-                version = plugin.metadata.version if plugin.metadata else "1.0.0"
-                plugin_list += f"{status} {name} v{version}\n"
-            await bot.send_group_message(event.group_id, plugin_list)
-    
-    @bot.on_group_message
-    async def handle_admin_commands(event, permission_level):
-        """处理管理员命令"""
-        if permission_level != PermissionLevel.BOT_ADMIN:
-            return
-        
-        message = event.raw_message
+    async def dispatch_commands(event, permission_level):
+        message = (event.raw_message or "").strip()
         args = message.split()
-        
-        if len(args) < 2:
+        if not args:
             return
-        
         command = args[0]
+        group_id = getattr(event, "group_id", 0)
 
-        # 管理员管理命令（持久化到数据库）
-        if command == '/add_admin':
+        if command == '/help':
+            await bot.send_group_message(group_id, _help_text(permission_level))
+            return
+        if command == '/version':
+            await bot.send_group_message(group_id, "Starrain-BOT v1.0.0 - 基于OneBot v11")
+            return
+        if command == '/plugins':
+            lines = ["已加载插件:"]
+            for name, plugin in bot.plugin_manager.plugins.items():
+                enabled = bot.plugin_manager.is_plugin_enabled_for_context(name, group_id)
+                status = "✓" if enabled else "✗"
+                ver = plugin.metadata.get("version", "?") if isinstance(plugin.metadata, dict) else getattr(plugin.metadata, "version", "?")
+                lines.append(f"  {status} {name} v{ver}")
+            await bot.send_group_message(group_id, "\n".join(lines))
+            return
+        if command in ('/currency_help', '/balance', '/daily') or message.startswith('/pay ') or message.startswith('/转账 '):
+            return
+
+        if permission_level < PermissionLevel.GROUP_STAFF:
+            return
+        if command == '/enable_grp' and len(args) >= 2:
+            bot.plugin_manager.set_group_plugin_enabled(group_id, args[1], True)
+            await bot.send_group_message(group_id, f"✓ 本群已启用插件: {args[1]}")
+            return
+        if command == '/disable_grp' and len(args) >= 2:
+            bot.plugin_manager.set_group_plugin_enabled(group_id, args[1], False)
+            await bot.send_group_message(group_id, f"✓ 本群已禁用插件: {args[1]}")
+            return
+        if command == '/mute' and len(args) >= 2:
+            try:
+                uid_str = args[1].strip()
+                if uid_str.startswith("[CQ:at,qq="):
+                    import re
+                    m = re.search(r"qq=(\d+)", uid_str)
+                    uid_str = m.group(1) if m else uid_str
+                user_id = int(uid_str)
+                duration = int(args[2]) if len(args) > 2 else 1
+                duration = max(0, min(43200, duration))
+                ok = await bot.set_group_ban(group_id, user_id, duration * 60)
+                if ok:
+                    await bot.send_group_message(group_id, f"✓ 已禁言 {duration} 分钟" if duration else "✓ 已解除禁言")
+                else:
+                    await bot.send_group_message(group_id, "✗ 禁言失败（无权限或接口不可用）")
+            except (ValueError, IndexError):
+                await bot.send_group_message(group_id, "✗ 用法: /mute <@某人|QQ> [分钟]，0=解除")
+            return
+        if command in ('/set_group_cfg', '/get_group_cfg', '/list_group_cfg'):
+            if command == '/set_group_cfg' and len(args) >= 3:
+                bot.db.set_group_config(group_id, args[1], " ".join(args[2:]))
+                await bot.send_group_message(group_id, f"✓ 已设置 {args[1]} = {' '.join(args[2:])}")
+            elif command == '/get_group_cfg' and len(args) >= 2:
+                v = bot.db.get_group_config(group_id, args[1])
+                await bot.send_group_message(group_id, f"{args[1]} = {v}" if v else f"本群未设置 {args[1]}")
+            elif command == '/list_group_cfg':
+                cfg = bot.db.list_group_configs(group_id)
+                await bot.send_group_message(group_id, "本群配置:\n" + "\n".join(f"{k}={v}" for k, v in cfg.items()) if cfg else "本群暂无配置")
+            return
+
+        if permission_level < PermissionLevel.BOT_ADMIN:
+            return
+        if command == '/enable' and len(args) >= 2:
+            ok = bot.plugin_manager.enable_plugin(args[1])
+            await bot.send_group_message(group_id, f"✓ 已全局启用: {args[1]}" if ok else f"✗ 失败: {args[1]}")
+            return
+        if command == '/disable' and len(args) >= 2:
+            ok = bot.plugin_manager.disable_plugin(args[1])
+            await bot.send_group_message(group_id, f"✓ 已全局禁用: {args[1]}" if ok else f"✗ 失败: {args[1]}")
+            return
+        if command == '/reload' and len(args) >= 2:
+            ok = bot.plugin_manager.reload_plugin(args[1])
+            await bot.send_group_message(group_id, f"✓ 已重载: {args[1]}" if ok else f"✗ 失败: {args[1]}")
+            return
+        if command == '/blacklist_add' and len(args) >= 2:
+            try:
+                gid = int(args[1])
+                bot.permission_manager.add_group_blacklist(gid)
+                await bot.send_group_message(group_id, f"✓ 已拉黑群 {gid}")
+            except ValueError:
+                await bot.send_group_message(group_id, "✗ 请输入有效群号")
+            return
+        if command == '/blacklist_remove' and len(args) >= 2:
+            try:
+                gid = int(args[1])
+                bot.permission_manager.remove_group_blacklist(gid)
+                await bot.send_group_message(group_id, f"✓ 已移除黑名单群 {gid}")
+            except ValueError:
+                await bot.send_group_message(group_id, "✗ 请输入有效群号")
+            return
+        if command == '/add_admin' and len(args) >= 2:
             try:
                 qq = int(args[1])
-            except (ValueError, IndexError):
-                await bot.send_group_message(event.group_id, "✗ 请输入有效的 QQ 号，例如：/add_admin 123456789")
-                return
-
-            bot.permission_manager.add_admin(qq)
-            await bot.send_group_message(event.group_id, f"✓ 已将 {qq} 添加为 BOT 管理员（已写入数据库）")
+                bot.permission_manager.add_admin(qq)
+                await bot.send_group_message(group_id, f"✓ 已添加 3 级管理员: {qq}")
+            except ValueError:
+                await bot.send_group_message(group_id, "✗ 请输入有效 QQ")
             return
-
-        if command == '/remove_admin':
+        if command == '/remove_admin' and len(args) >= 2:
             try:
                 qq = int(args[1])
-            except (ValueError, IndexError):
-                await bot.send_group_message(event.group_id, "✗ 请输入有效的 QQ 号，例如：/remove_admin 123456789")
-                return
-
-            bot.permission_manager.remove_admin(qq)
-            await bot.send_group_message(event.group_id, f"✓ 已将 {qq} 从 BOT 管理员中移除（已更新数据库）")
+                bot.permission_manager.remove_admin(qq)
+                await bot.send_group_message(group_id, f"✓ 已移除 3 级管理员: {qq}")
+            except ValueError:
+                await bot.send_group_message(group_id, "✗ 请输入有效 QQ")
+            return
+        if command == '/add_owner' and len(args) >= 2 and permission_level >= PermissionLevel.OWNER:
+            try:
+                qq = int(args[1])
+                bot.permission_manager.add_owner(qq)
+                await bot.send_group_message(group_id, f"✓ 已添加 4 级所有者: {qq}")
+            except ValueError:
+                await bot.send_group_message(group_id, "✗ 请输入有效 QQ")
+            return
+        if command == '/remove_owner' and len(args) >= 2 and permission_level >= PermissionLevel.OWNER:
+            try:
+                qq = int(args[1])
+                bot.permission_manager.remove_owner(qq)
+                await bot.send_group_message(group_id, f"✓ 已移除 4 级所有者: {qq}")
+            except ValueError:
+                await bot.send_group_message(group_id, "✗ 请输入有效 QQ")
+            return
+        if command == '/add_developer' and len(args) >= 2 and permission_level >= PermissionLevel.DEVELOPER:
+            try:
+                qq = int(args[1])
+                bot.permission_manager.add_developer(qq)
+                await bot.send_group_message(group_id, f"✓ 已添加 5 级开发者: {qq}")
+            except ValueError:
+                await bot.send_group_message(group_id, "✗ 请输入有效 QQ")
+            return
+        if command == '/remove_developer' and len(args) >= 2 and permission_level >= PermissionLevel.DEVELOPER:
+            try:
+                qq = int(args[1])
+                bot.permission_manager.remove_developer(qq)
+                await bot.send_group_message(group_id, f"✓ 已移除 5 级开发者: {qq}")
+            except ValueError:
+                await bot.send_group_message(group_id, "✗ 请输入有效 QQ")
+            return
+        if command == '/set_currency' and len(args) >= 3:
+            try:
+                target_qq = int(args[1])
+                amount = int(args[2])
+                if not bot.can_modify_user(event.user_id, target_qq, group_id, getattr(event, "sender_role", None)):
+                    await bot.send_group_message(group_id, "✗ 无权修改该用户数据（对方等级不低于你）")
+                    return
+                store = get_currency_store()
+                store.set_currency(target_qq, max(0, amount))
+                await bot.send_group_message(group_id, f"✓ 已将 {target_qq} 的余额设为 {store.get_currency(target_qq)}")
+            except ValueError:
+                await bot.send_group_message(group_id, "✗ 用法: /set_currency <QQ> <金额>")
+            return
+        if command == '/add_currency' and len(args) >= 3:
+            try:
+                target_qq = int(args[1])
+                delta = int(args[2])
+                if not bot.can_modify_user(event.user_id, target_qq, group_id, getattr(event, "sender_role", None)):
+                    await bot.send_group_message(group_id, "✗ 无权修改该用户数据（对方等级不低于你）")
+                    return
+                store = get_currency_store()
+                new_balance = store.add_currency(target_qq, delta)
+                await bot.send_group_message(group_id, f"✓ 已为 {target_qq} 增减 {delta}，当前余额: {new_balance}")
+            except ValueError:
+                await bot.send_group_message(group_id, "✗ 用法: /add_currency <QQ> <增减值>")
             return
 
-        # 群配置相关命令（持久化到数据库的 group_configs 表）
-        if command == '/set_group_cfg':
-            if len(args) < 3:
+        if permission_level < PermissionLevel.OWNER:
+            return
+        if command == '/restart':
+            bot._restart_requested = True
+            await bot.send_group_message(group_id, "✓ 正在重启机器人…")
+            await bot.stop()
+            return
+        if command == '/shutdown':
+            bot._shutdown_requested = True
+            await bot.send_group_message(group_id, "✓ 正在关闭机器人…")
+            await bot.stop()
+            return
+
+        if permission_level < PermissionLevel.DEVELOPER:
+            return
+        if command == '/debug':
+            section = (args[1].lower() if len(args) >= 2 else "").strip()
+            msg = _build_debug_message(bot, section)
+            if not msg:
                 await bot.send_group_message(
-                    event.group_id,
-                    "✗ 用法：/set_group_cfg <key> <value>"
+                    group_id,
+                    "【Debug】用法: /debug [system|permission|plugins|currency|full]\n"
+                    "无参数=总览 | system=系统 | permission=权限列表 | plugins=插件 | currency=货币缓存 | full=全部"
                 )
                 return
-
-            key = args[1]
-            value = " ".join(args[2:])
-            bot.db.set_group_config(event.group_id, key, value)
-            await bot.send_group_message(
-                event.group_id,
-                f"✓ 已为本群设置配置项：{key} = {value}"
-            )
+            if isinstance(msg, list):
+                for m in msg:
+                    await bot.send_group_message(group_id, m)
+            else:
+                await bot.send_group_message(group_id, msg)
             return
-
-        if command == '/get_group_cfg':
-            key = args[1]
-            value = bot.db.get_group_config(event.group_id, key)
-            if value is None:
-                await bot.send_group_message(
-                    event.group_id,
-                    f"ℹ 本群尚未设置配置项：{key}"
-                )
-            else:
-                await bot.send_group_message(
-                    event.group_id,
-                    f"本群配置 {key} = {value}"
-                )
-            return
-
-        if command == '/list_group_cfg':
-            configs = bot.db.list_group_configs(event.group_id)
-            if not configs:
-                await bot.send_group_message(event.group_id, "ℹ 本群暂无配置项")
-                return
-
-            lines = ["本群配置列表："]
-            for k, v in configs.items():
-                lines.append(f"{k} = {v}")
-            await bot.send_group_message(event.group_id, "\n".join(lines))
-            return
-
-        plugin_name = args[1] if len(args) > 1 else None
-        
-        if command == '/enable' and plugin_name:
-            success = bot.plugin_manager.enable_plugin(plugin_name)
-            if success:
-                await bot.send_group_message(event.group_id, f"✓ 插件已启用: {plugin_name}")
-            else:
-                await bot.send_group_message(event.group_id, f"✗ 插件启用失败: {plugin_name}")
-        
-        elif command == '/disable' and plugin_name:
-            success = bot.plugin_manager.disable_plugin(plugin_name)
-            if success:
-                await bot.send_group_message(event.group_id, f"✓ 插件已禁用: {plugin_name}")
-            else:
-                await bot.send_group_message(event.group_id, f"✗ 插件禁用失败: {plugin_name}")
-        
-        elif command == '/reload' and plugin_name:
-            success = bot.plugin_manager.reload_plugin(plugin_name)
-            if success:
-                await bot.send_group_message(event.group_id, f"✓ 插件已重载: {plugin_name}")
-            else:
-                await bot.send_group_message(event.group_id, f"✗ 插件重载失败: {plugin_name}")
 
 
 async def main():
-    """主函数"""
     try:
         print_banner()
-        
-        # 检查Python版本
-        python_version = sys.version_info
-        if python_version.major < 3 or (python_version.major == 3 and python_version.minor < 8):
-            print(f"错误: 需要 Python 3.8+，当前版本: {sys.version.split()[0]}")
-            print("请升级 Python 到 3.8 或更高版本")
+        if sys.version_info < (3, 8):
+            print("错误: 需要 Python 3.8+")
             sys.exit(1)
-        
-        # 加载配置
         print("正在加载配置...")
         config = load_config()
         print("[完成] 配置已加载")
-        
-        # 创建机器人实例
         print("正在初始化机器人...")
         bot = Bot(config)
+        bot._restart_requested = False
+        bot._shutdown_requested = False
         print(f"[完成] 机器人已初始化 QQ: {config['bot']['qq']}")
-        
-        # 注册命令
+
+        if bot.permission_manager.self_check_and_ensure_developer_fallback():
+            print("[自检] 已将兜底开发者写入 5 级列表，正在重启…")
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
         print("正在注册命令...")
         await register_commands(bot)
         print("[完成] 命令已注册")
-        
-        # 启动机器人
         print("\n" + "=" * 50)
         print("正在启动机器人... 按 Ctrl+C 停止")
         print("=" * 50 + "\n")
-        
+
         try:
             await bot.run()
         except KeyboardInterrupt:
-            print("\n\n收到停止信号，正在关闭...")
+            print("\n收到停止信号，正在关闭...")
             await bot.stop()
         except Exception as e:
-            print(f"\n错误: {e}")
             import traceback
             traceback.print_exc()
             try:
                 await bot.stop()
-            except:
+            except Exception:
                 pass
-    
+
+        if getattr(bot, "_restart_requested", False):
+            print("执行重启…")
+            os.execv(sys.executable, [sys.executable] + sys.argv)
     except Exception as e:
-        print(f"\n错误: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -273,8 +439,6 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print("\n程序已停止")
     except Exception as e:
-        print(f"\n严重错误: {e}")
         import traceback
         traceback.print_exc()
         input("\n按回车键退出...")
-

@@ -41,26 +41,17 @@ bot:
   # 启动时加载所有插件
   load_all_on_startup: true
 
-# 权限管理
+# 权限管理（五级：1=普通用户 2=群主/管理员 3=机器人管理员 4=所有者 5=开发者）
+# 3/4/5 级账号存于 data/admins_l3.json、data/owners_l4.json、data/developers_l5.json
 permission:
-  # BOT管理员QQ号列表
-  # 在此处添加你的QQ号以获取管理员权限
-  admins:
-    - 987654321
-  
-  # 启用群权限系统
+  # 可选：首次运行时可从 admins 迁入 3 级
+  admins: []
   enable_group_permission: true
-  
-  # 群管理员的额外权限
-  group_admin_permissions:
-    - kick_member
-    - mute_member
 
 # 插件配置
 plugin:
-  # 插件目录
   dir: "./plugins"
-  
+  data_dir: "data"
   # 启动时自动加载插件
   auto_load: true
   

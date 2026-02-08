@@ -5,7 +5,7 @@ import importlib
 import importlib.util
 import asyncio
 from pathlib import Path
-from typing import Dict, Set, Optional, Callable, Any
+from typing import Dict, Set, Optional, Callable, Any, List
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 
@@ -99,17 +99,22 @@ class PluginEventHandler(FileSystemEventHandler):
 
 
 class PluginManager:
-    """插件管理器"""
-    
+    """插件管理器；插件相关数据统一存放在 data 目录。"""
+
     def __init__(self, config: dict):
         self.config = config
         self.plugin_dir = Path(config.get('dir', './plugins'))
+        self.data_dir = Path(config.get('data_dir', 'data')).resolve()
+        self.data_dir.mkdir(parents=True, exist_ok=True)
         self.plugins: Dict[str, Plugin] = {}
         self.enabled_plugins: Set[str] = set()
         self.auto_load = config.get('auto_load', True)
         self.hot_reload = config.get('hot_reload', True)
-        self.metadata_file = self.plugin_dir / config.get('metadata_file', 'plugin_metadata.json')
-        
+        self.metadata_file = self.data_dir / config.get('metadata_file', 'plugin_metadata.json')
+        self._group_plugins_file = self.data_dir / "group_plugins.json"
+        self._group_plugins: Dict[str, Dict[str, bool]] = {}
+        self._load_group_plugins()
+
         # 文件监控
         self.observer = None
         if self.hot_reload:
@@ -137,16 +142,52 @@ class PluginManager:
             print(f"加载插件元数据失败: {e}")
     
     def _save_metadata(self):
-        """保存插件元数据"""
+        """保存插件元数据（存于 data 目录）"""
         try:
-            self.metadata_file.parent.mkdir(parents=True, exist_ok=True)
+            self.data_dir.mkdir(parents=True, exist_ok=True)
             with open(self.metadata_file, 'w', encoding='utf-8') as f:
                 json.dump({
                     'enabled_plugins': list(self.enabled_plugins)
                 }, f, indent=2, ensure_ascii=False)
         except Exception as e:
             print(f"保存插件元数据失败: {e}")
-    
+
+    def _load_group_plugins(self):
+        try:
+            if self._group_plugins_file.exists():
+                with open(self._group_plugins_file, 'r', encoding='utf-8') as f:
+                    self._group_plugins = json.load(f)
+            else:
+                self._group_plugins = {}
+        except Exception:
+            self._group_plugins = {}
+
+    def _save_group_plugins(self):
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            with open(self._group_plugins_file, 'w', encoding='utf-8') as f:
+                json.dump(self._group_plugins, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"保存群插件配置失败: {e}")
+
+    def set_group_plugin_enabled(self, group_id: int, plugin_name: str, enabled: bool) -> None:
+        gk = str(group_id)
+        if gk not in self._group_plugins:
+            self._group_plugins[gk] = {}
+        self._group_plugins[gk][plugin_name] = enabled
+        self._save_group_plugins()
+
+    def get_group_plugin_enabled(self, group_id: int, plugin_name: str) -> Optional[bool]:
+        return self._group_plugins.get(str(group_id), {}).get(plugin_name)
+
+    def is_plugin_enabled_for_context(self, plugin_name: str, group_id: Optional[int]) -> bool:
+        if plugin_name not in self.enabled_plugins:
+            return False
+        if group_id is None:
+            return True
+        override = self.get_group_plugin_enabled(group_id, plugin_name)
+        return override is None or override is True
+
     def discover_plugins(self) -> list:
         """发现插件"""
         plugins = []
@@ -274,14 +315,19 @@ class PluginManager:
         return True
     
     def get_plugin(self, plugin_name: str) -> Optional[Plugin]:
-        """获取插件"""
         return self.plugins.get(plugin_name)
-    
+
+    def get_plugin_data_dir(self, plugin_name: str) -> Path:
+        path = self.data_dir / plugin_name
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
     async def dispatch_event(self, event_type: str, *args, **kwargs):
-        """分发事件到所有启用的插件"""
+        group_id = getattr(args[0], 'group_id', None) if args else None
         for plugin_name, plugin in self.plugins.items():
-            if plugin.enabled:
-                await plugin.handle_event(event_type, *args, **kwargs)
+            if not self.is_plugin_enabled_for_context(plugin_name, group_id):
+                continue
+            await plugin.handle_event(event_type, *args, **kwargs)
     
     def _on_plugin_modified(self, plugin_path: Path):
         """插件文件修改回调"""

@@ -1,4 +1,5 @@
 import asyncio
+import time
 from typing import Dict, Any, Optional, Callable
 from ..core.adapter import WebSocketAdapter, ReverseWebSocketAdapter, HTTPAdapter
 from ..core.permission import PermissionManager
@@ -20,7 +21,7 @@ class Bot:
         self.logger = get_logger(config['log'])
         # 数据库：默认使用 save/bot.db
         self.db = Database()
-        self.permission_manager = PermissionManager(config['permission'], self.db)
+        self.permission_manager = PermissionManager(config['permission'])
         self.plugin_manager = PluginManager(config['plugin'])
         self.renderer = ImageRenderer(config['renderer'])
         
@@ -39,11 +40,18 @@ class Bot:
         }
         
         self._running = False
-    
+        self._start_time: Optional[float] = None
+
     @property
     def qq(self) -> int:
         return self._qq
-    
+
+    @property
+    def uptime_seconds(self) -> float:
+        if self._start_time is None:
+            return 0.0
+        return time.time() - self._start_time
+
     def _setup_adapters(self):
         """设置适配器（只能启用一种连接方式）"""
         onebot_config = self.config['onebot']
@@ -99,20 +107,22 @@ class Bot:
         """处理适配器事件"""
         try:
             event = parse_event(event_data)
-            
-            # 获取发送者信息（群角色）
+            setattr(event, 'bot', self)
+
+            if hasattr(event, 'group_id') and event.group_id:
+                if self.permission_manager.is_group_blacklisted(event.group_id):
+                    return
+
             group_role = None
             if hasattr(event, 'sender_role'):
                 group_role = event.sender_role
-            
-            # 检查权限
+
             permission_level = self.permission_manager.check_permission(
                 event.user_id,
                 event.group_id if hasattr(event, 'group_id') else None,
                 group_role
             )
-            
-            # 分发事件
+
             await self._dispatch_event(event, permission_level)
         except Exception as e:
             self.logger.error(f"事件处理错误: {e}")
@@ -213,10 +223,30 @@ class Bot:
     async def send_private_message(self, user_id: int, message: Any) -> bool:
         """发送私聊消息"""
         return await self.send_message('private', user_id, None, message)
-    
+
+    async def set_group_ban(self, group_id: int, user_id: int, duration: int = 60) -> bool:
+        """禁言群成员（2 级权限可调用）。duration 秒，0 为解除。"""
+        for adapter in self.adapters:
+            if isinstance(adapter, HTTPAdapter) and adapter.is_connected():
+                result = await adapter.call_api('set_group_ban', {
+                    'group_id': group_id,
+                    'user_id': user_id,
+                    'duration': duration,
+                })
+                return result is not None
+        for adapter in self.adapters:
+            if adapter.is_connected() and not isinstance(adapter, HTTPAdapter):
+                ok = await adapter.send({
+                    'action': 'set_group_ban',
+                    'params': {'group_id': group_id, 'user_id': user_id, 'duration': duration},
+                })
+                return ok
+        return False
+
     async def start(self):
         """启动机器人"""
         self._running = True
+        self._start_time = time.time()
         self.logger.info(f"机器人启动中... QQ: {self.qq}")
         await asyncio.sleep(0.3)
         
@@ -273,9 +303,21 @@ class Bot:
         return self.permission_manager.check_permission(qq, group_id, group_role)
     
     def is_admin(self, qq: int) -> bool:
-        """是否是BOT管理员"""
         return self.permission_manager.is_admin(qq)
-    
+
+    def can_modify_user(
+        self,
+        modifier_qq: int,
+        target_qq: int,
+        modifier_group_id: Optional[int] = None,
+        modifier_role: Optional[str] = None,
+    ) -> bool:
+        return self.permission_manager.can_modify_user(
+            modifier_qq, target_qq, modifier_group_id, modifier_role
+        )
+
+    def get_user_level_without_group(self, qq: int):
+        return self.permission_manager.get_level_without_group(qq)
+
     def is_group_admin(self, group_role: Optional[str] = None) -> bool:
-        """是否是群管理员"""
-        return self.permission_manager.is_group_admin(group_role)
+        return self.permission_manager.is_group_staff(group_role)
