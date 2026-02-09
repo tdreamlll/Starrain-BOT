@@ -269,7 +269,7 @@ def create_directories():
     """创建必要的目录"""
     print_step("步骤 6/6: 创建目录结构")
     
-    directories = ["logs", "cache", "save", "docs"]
+    directories = ["logs", "cache", "save"]
     created = 0
     
     for dir_name in directories:
@@ -320,7 +320,7 @@ def start_bot():
         return
     
     try:
-        subprocess.run([venv_python, "src/main.py"])
+        subprocess.run([venv_python, "main.py"])
     except KeyboardInterrupt:
         print("\n\n机器人已停止")
     except Exception as e:
