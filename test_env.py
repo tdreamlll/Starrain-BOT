@@ -56,31 +56,60 @@ def check_module(module_name, import_name=None):
     except ImportError:
         print_error(f"{module_name}: 未安装")
         return False
+def parse_requirements():
+    """解析 requirements.txt，返回 (required_modules, optional_modules)
+    每项为 (package_name, import_name) 元组。"""
+    requirements_file = Path("requirements.txt")
+    if not requirements_file.exists():
+        print_error("requirements.txt 文件未找到!")
+        return [], []
+
+    required_modules = []
+    optional_modules = []
+
+    try:
+        with requirements_file.open('r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+
+                # 去除版本约束，提取包名
+                package_name = line.split('>=')[0].split('==')[0].split('<')[0].split('!')[0].strip()
+                if not package_name:
+                    continue
+
+                import_name = package_name
+                if package_name.lower() == 'pillow':
+                    import_name = 'PIL'
+                elif package_name.lower() in ('pyyaml', 'yaml'):
+                    import_name = 'yaml'
+
+                # 将 pyppeteer 视为可选模块
+                if package_name.lower() == 'pyppeteer':
+                    optional_modules.append((package_name, import_name))
+                else:
+                    required_modules.append((package_name, import_name))
+    except Exception as e:
+        print_error(f"读取 requirements.txt 失败: {e}")
+        return [], []
+
+    return required_modules, optional_modules
+
 
 def check_modules():
-    """检查所有必需模块"""
+    """检查所有必需模块（从 requirements.txt 读取）"""
     print_header("模块依赖检查")
-    
-    required_modules = [
-        ("websockets", "websockets"),
-        ("aiohttp", "aiohttp"),
-        ("watchdog", "watchdog"),
-        ("Pillow", "PIL"),
-        ("colorama", "colorama"),
-        ("yaml", "yaml"),
-        ("rich", "rich"),
-        ("aiofiles", "aiofiles"),
-        ("pymysql", "pymysql"),
-        ("asyncio", "asyncio"),
-    ]
-    
-    optional_modules = [
-        ("pyppeteer", "pyppeteer"),
-    ]
-    
+
+    required_modules, optional_modules = parse_requirements()
+
+    if not required_modules and not optional_modules:
+        print_error("无法读取依赖列表")
+        return False
+
     all_ok = True
     missing_modules = []
-    
+
     print("必需模块:")
     for module_name, import_name in required_modules:
         import_name = import_name or module_name
@@ -88,21 +117,22 @@ def check_modules():
         if not ok:
             all_ok = False
             missing_modules.append(module_name)
-    
+
     if not all_ok:
         print_warning(f"缺少 {len(missing_modules)} 个必需模块")
         print_error("请运行以下命令安装:")
         print("  pip install -r requirements.txt")
-    
-    print("\n可选模块 (图片渲染功能):")
-    for module_name, import_name in optional_modules:
-        import_name = import_name or module_name
-        ok = check_module(module_name, import_name)
-        if not ok:
-            print_warning(f"图片渲染将不可用")
-            print_info("  如需使用图片渲染，请安装:")
-            print_info("    pip install pyppeteer")
-    
+
+    if optional_modules:
+        print("\n可选模块 (图片渲染功能):")
+        for module_name, import_name in optional_modules:
+            import_name = import_name or module_name
+            ok = check_module(module_name, import_name)
+            if not ok:
+                print_warning(f"图片渲染将不可用")
+                print_info("  如需使用图片渲染，请安装:")
+                print_info(f"    pip install {module_name}")
+
     return all_ok
 
 def check_project_structure():
