@@ -36,7 +36,7 @@
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/your-username/Starrain-BOT.git
+git clone https://github.com/Starrain08/Starrain-BOT.git
 cd Starrain-BOT
 ```
 
