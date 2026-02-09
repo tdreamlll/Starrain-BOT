@@ -142,7 +142,7 @@ def check_project_structure():
     required_paths = [
         ("config/config.yaml", "配置文件"),
         ("config/config.yaml.example", "配置模板"),
-        ("src/main.py", "主程序"),
+        ("main.py", "主程序"),
         ("src/core/bot.py", "机器人核心"),
         ("src/core/permission.py", "权限管理器"),
         ("src/core/plugin_manager.py", "插件管理器"),
