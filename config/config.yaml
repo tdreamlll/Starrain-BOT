@@ -1,27 +1,21 @@
 # Starrain-BOT 配置模板
 # 将此文件复制为 config.yaml 并修改配置
 
-# OneBot配置
 onebot:
-  # 连接类型 (只能选择一种): ws, reverse_ws, http
-  # ws: 主动连接NapCat的WebSocket服务器 (正向连接)
-  # reverse_ws: NapCat主动连接到机器人的WebSocket服务器 (反向连接)
-  # http: 使用HTTP API调用NapCat
   connection_type: "http"
-
-  # 正向WebSocket配置 (connection_type为ws时使用)
   url: "ws://localhost:3001"
-
-  # 访问令牌 (NapCat中未设置则留空)
   access_token: ""
-
-  # HTTP配置 (connection_type为http时使用)
+  
+  # HTTP API配置 (调用NapCat的API)
   http_url: "http://localhost:3000"
-
-  # 反向WebSocket配置 (connection_type为reverse_ws时使用)
+  
+  # HTTP POST上报配置 (NapCat推送事件到你的服务器)
+  http_post_enabled: true
+  http_post_host: "0.0.0.0"
+  http_post_port: 5700
+  http_post_secret: ""
+  
   reverse_ws_url: "ws://localhost:3002"
-
-  # 心跳间隔 (秒)
   heartbeat_interval: 5
 
 # 机器人配置

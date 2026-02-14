@@ -1,9 +1,9 @@
 import asyncio
 import time
 from typing import Dict, Any, Optional, Callable
-from ..core.adapter import WebSocketAdapter, ReverseWebSocketAdapter, HTTPAdapter
-from ..core.permission import PermissionManager
-from ..core.plugin_manager import PluginManager
+from .adapter import WebSocketAdapter, ReverseWebSocketAdapter, HTTPAdapter
+from .permission import PermissionManager
+from .plugin_manager import PluginManager
 from ..utils.logger import get_logger
 from ..utils.renderer import ImageRenderer
 from ..utils.db import Database
@@ -32,6 +32,7 @@ class Bot:
         # 事件处理器
         self._event_handlers = {
             'message': [],
+            'message_sent': [],
             'group_message': [],
             'private_message': [],
             'notice': [],
@@ -41,6 +42,8 @@ class Bot:
         
         self._running = False
         self._start_time: Optional[float] = None
+        self._restart_requested = False
+        self._shutdown_requested = False
 
     @property
     def qq(self) -> int:
@@ -128,29 +131,29 @@ class Bot:
             self.logger.error(f"事件处理错误: {e}")
     
     async def _dispatch_event(self, event: Event, permission_level):
-        """分发事件（优化版，减少asyncio调用）"""
-        # 通用消息事件
-        if event.event_type == 'message':
+        post_type = event.data.get('post_type', '')
+        
+        if post_type == 'message':
             if event.message_type == 'group':
                 await self._emit('message', event, permission_level)
                 await self._emit('group_message', event, permission_level)
             elif event.message_type == 'private':
                 await self._emit('message', event, permission_level)
                 await self._emit('private_message', event, permission_level)
-        
-        # 通知事件
-        elif event.event_type == 'notice':
+        elif post_type == 'message_sent':
+            if event.message_type == 'group':
+                await self._emit('message', event, permission_level)
+                await self._emit('group_message', event, permission_level)
+            elif event.message_type == 'private':
+                await self._emit('message', event, permission_level)
+                await self._emit('private_message', event, permission_level)
+        elif post_type == 'notice':
             await self._emit('notice', event, permission_level)
-        
-        # 请求事件
-        elif event.event_type == 'request':
+        elif post_type == 'request':
             await self._emit('request', event, permission_level)
-        
-        # 元事件
-        elif event.event_type == 'meta_event':
+        elif post_type == 'meta_event':
             await self._emit('meta_event', event, permission_level)
         
-        # 分发到插件（只分发给已启用的插件）
         await self.plugin_manager.dispatch_event(event.event_type, event, permission_level)
     
     async def _emit(self, event_type: str, *args, **kwargs):
@@ -188,32 +191,15 @@ class Bot:
         """注册元事件处理器"""
         self._event_handlers['meta_event'].append(handler)
     
+    def on_message_sent(self, handler: Callable):
+        """注册消息发送事件处理器"""
+        self._event_handlers['message_sent'].append(handler)
+    
     async def send_message(self, message_type: str, user_id: int, 
                           group_id: Optional[int] = None, message: Any = '') -> bool:
-        """发送消息"""
-        params = {
-            'message_type': message_type,
-            'user_id': user_id,
-            'message': message
-        }
-        
-        if group_id and message_type == 'group':
-            params['group_id'] = group_id
-        
-        # 尝试通过HTTP适配器发送
         for adapter in self.adapters:
-            if isinstance(adapter, HTTPAdapter) and adapter.is_connected():
-                result = await adapter.call_api('send_msg', params)
-                return result is not None
-        
-        # 尝试通过WS适配器发送
-        for adapter in self.adapters:
-            if adapter.is_connected() and not isinstance(adapter, HTTPAdapter):
-                return await adapter.send({
-                    'action': 'send_msg',
-                    'params': params
-                })
-        
+            if adapter.is_connected():
+                return await adapter.send_message(message_type, user_id, group_id, message)
         return False
     
     async def send_group_message(self, group_id: int, message: Any) -> bool:
@@ -225,22 +211,32 @@ class Bot:
         return await self.send_message('private', user_id, None, message)
 
     async def set_group_ban(self, group_id: int, user_id: int, duration: int = 60) -> bool:
-        """禁言群成员（2 级权限可调用）。duration 秒，0 为解除。"""
         for adapter in self.adapters:
-            if isinstance(adapter, HTTPAdapter) and adapter.is_connected():
-                result = await adapter.call_api('set_group_ban', {
-                    'group_id': group_id,
-                    'user_id': user_id,
-                    'duration': duration,
-                })
-                return result is not None
+            if adapter.is_connected():
+                if isinstance(adapter, HTTPAdapter):
+                    result = await adapter.call_api('set_group_ban', {
+                        'group_id': group_id,
+                        'user_id': user_id,
+                        'duration': duration,
+                    })
+                    if result is not None:
+                        return True
+                else:
+                    return await adapter.send({
+                        'action': 'set_group_ban',
+                        'params': {'group_id': group_id, 'user_id': user_id, 'duration': duration},
+                    })
+        return False
+    
+    async def bot_exit(self) -> bool:
         for adapter in self.adapters:
-            if adapter.is_connected() and not isinstance(adapter, HTTPAdapter):
-                ok = await adapter.send({
-                    'action': 'set_group_ban',
-                    'params': {'group_id': group_id, 'user_id': user_id, 'duration': duration},
-                })
-                return ok
+            if adapter.is_connected():
+                if isinstance(adapter, HTTPAdapter):
+                    result = await adapter.call_api('bot_exit', {})
+                    if result is not None:
+                        return True
+                else:
+                    return await adapter.bot_exit()
         return False
 
     async def start(self):

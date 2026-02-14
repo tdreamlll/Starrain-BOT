@@ -104,10 +104,17 @@ class MetaEvent(Event):
 
 
 def parse_event(data: dict) -> Event:
-    """解析事件"""
     post_type = data.get('post_type', '')
     
     if post_type == 'message':
+        message_type = data.get('message_type', '')
+        if message_type == 'group':
+            return GroupMessageEvent(data)
+        elif message_type == 'private':
+            return PrivateMessageEvent(data)
+        else:
+            return MessageEvent(data)
+    elif post_type == 'message_sent':
         message_type = data.get('message_type', '')
         if message_type == 'group':
             return GroupMessageEvent(data)

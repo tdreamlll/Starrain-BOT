@@ -1,5 +1,6 @@
 import asyncio
 import aiohttp
+from aiohttp import web
 from typing import Dict, Any, Optional
 from .base import BaseAdapter
 from src.utils.logger import get_logger
@@ -9,59 +10,79 @@ def _get_logger():
 
 
 class HTTPAdapter(BaseAdapter):
-    """HTTP适配器"""
+    """HTTP适配器 (支持HTTP POST上报)"""
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        self.url = config.get('http_url', 'http://localhost:3000')
+        self.api_url = config.get('http_url', 'http://localhost:3000')
         self.access_token = config.get('access_token', '')
+        
+        # HTTP POST上报服务器配置
+        self.post_port = config.get('http_post_port', 5700)
+        self.post_host = config.get('http_post_host', '0.0.0.0')
+        self.post_secret = config.get('http_post_secret', '')
+        
         self.session: Optional[aiohttp.ClientSession] = None
-        self._poll_task = None
-        self.last_event_id = None
+        self._heartbeat_task = None
+        self._server: Optional[web.AppRunner] = None
     
     async def connect(self) -> bool:
-        """连接（HTTP不需要连接）"""
         try:
+            # 初始化HTTP客户端（用于调用API）
             self.session = aiohttp.ClientSession(
                 headers=self._get_headers(),
                 timeout=aiohttp.ClientTimeout(total=30)
             )
-            self.connected = True
-            _get_logger().success(f"HTTP初始化成功: {self.url}")
             
-            # 启动轮询
-            self._poll_task = asyncio.create_task(self._poll_loop())
+            # 启动HTTP POST上报服务器
+            self._runner = web.AppRunner(self._create_app())
+            await self._runner.setup()
+            site = web.TCPSite(self._runner, self.post_host, self.post_port)
             
-            return True
+            try:
+                await site.start()
+                self.connected = True
+                _get_logger().success(f"HTTP API初始化成功: {self.api_url}")
+                _get_logger().success(f"HTTP POST上报服务器启动成功: http://{self.post_host}:{self.post_port}")
+                
+                # 启动心跳检查
+                self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+                
+                return True
+            except Exception as e:
+                _get_logger().error(f"HTTP POST服务器启动失败: {e}")
+                await self._runner.cleanup()
+                return False
+                
         except Exception as e:
             _get_logger().error(f"HTTP初始化失败: {e}")
             self.connected = False
             
-            # 如果启用了自动重连，启动重连任务
             if self.auto_reconnect:
                 asyncio.create_task(self._reconnect_loop())
             
             return False
     
     async def disconnect(self):
-        """断开连接"""
         self.connected = False
         
-        if self._poll_task:
-            self._poll_task.cancel()
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
             try:
-                await self._poll_task
+                await self._heartbeat_task
             except asyncio.CancelledError:
                 pass
+        
+        if hasattr(self, '_runner') and self._runner:
+            await self._runner.cleanup()
         
         if self.session:
             await self.session.close()
             self.session = None
         
-        _get_logger().info("HTTP会话已关闭")
+        _get_logger().info("HTTP已断开连接")
     
     async def send(self, data: Any) -> bool:
-        """发送数据"""
         if not self.connected or not self.session:
             _get_logger().warning("HTTP未初始化")
             return False
@@ -83,34 +104,114 @@ class HTTPAdapter(BaseAdapter):
             return False
     
     async def receive(self) -> Optional[Dict[str, Any]]:
-        """接收数据（通过轮询）"""
         return None
     
-    async def call_api(self, action: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """调用API"""
+    def _create_app(self):
+        app = web.Application()
+        app.router.add_post('/', self._handle_event)
+        return app
+    
+    async def _handle_event(self, request):
         try:
-            async with self.session.post(
-                f"{self.url}/{action}",
-                json=params
-            ) as response:
+            # 验证X-Self-ID（可选）
+            self_id = request.headers.get('X-Self-ID')
+            if self_id and int(self_id) != self.config.get('qq', 0):
+                return web.Response(status=403, text="Wrong self_id")
+            
+            # 验证签名
+            sig = request.headers.get('X-Signature', '')
+            if self.post_secret:
+                body = await request.read()
+                import hmac
+                import hashlib
+                computed_sig = 'sha1=' + hmac.new(
+                    self.post_secret.encode(),
+                    body,
+                    hashlib.sha1
+                ).hexdigest()
+                if sig != computed_sig:
+                    return web.Response(status=401, text="Invalid signature")
+                event_data = await request.json()
+            else:
+                event_data = await request.json()
+            
+            # 异步处理事件
+            asyncio.create_task(self._process_event(event_data))
+            
+            return web.Response(text="OK", status=200)
+        except Exception as e:
+            _get_logger().error(f"HTTP POST事件处理错误: {e}")
+            return web.Response(text="Internal Server Error", status=500)
+    
+    async def _process_event(self, event_data: Dict[str, Any]):
+        try:
+            await self.emit_event(event_data)
+        except Exception as e:
+            _get_logger().error(f"事件处理错误: {e}")
+    
+    async def call_api(self, action: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not self.session:
+            _get_logger().error("HTTP会话未初始化")
+            return None
+        
+        try:
+            url = f"{self.api_url}/{action}"
+            async with self.session.post(url, json=params) as response:
                 result = await response.json()
                 if result.get('retcode') == 0:
                     return result.get('data')
                 else:
-                    _get_logger().error(f"API调用失败: {result}")
+                    _get_logger().error(f"API调用失败 {action}: {result}")
                     return None
         except Exception as e:
-            _get_logger().error(f"API调用错误: {e}")
+            _get_logger().error(f"API调用错误 {action}: {e}")
             return None
     
-    async def _poll_loop(self):
-        """轮询事件"""
+    async def send_message(self, message_type: str, user_id: int, group_id: Optional[int] = None, message: Any = '') -> bool:
+        params = {
+            'message_type': message_type,
+            'user_id': user_id,
+            'message': self._format_message_content(message)
+        }
+        if group_id:
+            params['group_id'] = group_id
+        result = await self.call_api('send_msg', params)
+        return result is not None
+    
+    async def bot_exit(self) -> bool:
+        result = await self.call_api('bot_exit', {})
+        return result is not None
+    
+    async def get_login_info(self) -> Optional[Dict[str, Any]]:
+        return await self.call_api('get_login_info', {})
+    
+    async def get_status(self) -> Optional[Dict[str, Any]]:
+        return await self.call_api('get_status', {})
+    
+    async def get_version_info(self) -> Optional[Dict[str, Any]]:
+        return await self.call_api('get_version_info', {})
+    
+    def _format_message_content(self, message: Any) -> Any:
+        if isinstance(message, str) and message.startswith(('base64://', 'data:', 'file://')):
+            return message
+        return message
+
+    async def _heartbeat_loop(self):
         while self.connected and not self._stop_event.is_set():
             try:
-                await asyncio.sleep(1)
+                await asyncio.sleep(30)
+                status = await self.get_status()
+                if not status:
+                    _get_logger().warning("HTTP心跳失败，尝试重连...")
+                    if self.auto_reconnect:
+                        await self._reconnect()
             except Exception as e:
-                _get_logger().error(f"HTTP轮询错误: {e}")
-                await asyncio.sleep(1)
+                _get_logger().error(f"HTTP心跳错误: {e}")
+    
+    async def _reconnect(self):
+        await self.disconnect()
+        await asyncio.sleep(1)
+        return await self.connect()
     
     def _get_headers(self) -> Dict[str, str]:
         """获取请求头"""
@@ -164,35 +265,13 @@ class HTTPAdapter(BaseAdapter):
         return str(params)
     
     async def _reconnect_loop(self):
-        """重连循环（用于初始连接失败后）"""
         while not self.connected and not self._stop_event.is_set():
-            try:
-                if self.reconnect_count >= self.max_reconnect_attempts and self.max_reconnect_attempts != -1:
-                    _get_logger().warning("HTTP已达到最大重连次数，停止重连")
-                    break
-                
-                self.reconnect_count += 1
-                _get_logger().info(f"HTTP正在重连... ({self.reconnect_count}/{self.max_reconnect_attempts})")
-                
-                await asyncio.sleep(self.reconnect_interval / 1000)
-                
-                # 尝试重新连接
-                try:
-                    self.session = aiohttp.ClientSession(
-                        headers=self._get_headers(),
-                        timeout=aiohttp.ClientTimeout(total=30)
-                    )
-                    self.connected = True
-                    _get_logger().success("HTTP重连成功")
-                    
-                    # 启动轮询
-                    self._poll_task = asyncio.create_task(self._poll_loop())
-                    
-                    self.reconnect_count = 0
-                    break
-                except Exception as e:
-                    _get_logger().error(f"HTTP重连失败: {e}")
-                    
-            except Exception as e:
-                _get_logger().error(f"HTTP重连循环错误: {e}")
-                await asyncio.sleep(1)
+            if self.reconnect_count >= self.max_reconnect_attempts and self.max_reconnect_attempts != -1:
+                _get_logger().warning("HTTP已达到最大重连次数")
+                break
+            
+            self.reconnect_count += 1
+            _get_logger().info(f"HTTP正在重连... ({self.reconnect_count}/{self.max_reconnect_attempts})")
+            
+            await asyncio.sleep(self.reconnect_interval / 1000)
+            await self._reconnect()

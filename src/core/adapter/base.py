@@ -33,8 +33,16 @@ class BaseAdapter(ABC):
     
     @abstractmethod
     async def send(self, data: Any) -> bool:
-        """发送数据"""
         pass
+    
+    async def send_message(self, message_type: str, user_id: int, group_id: Optional[int] = None, message: Any = '') -> bool:
+        params = {'action': 'send_msg', 'params': {'message_type': message_type, 'user_id': user_id, 'message': message}}
+        if group_id:
+            params['params']['group_id'] = group_id
+        return await self.send(params)
+    
+    async def bot_exit(self) -> bool:
+        return await self.send({'action': 'bot_exit', 'params': {}})
     
     @abstractmethod
     async def receive(self) -> Optional[Dict[str, Any]]:

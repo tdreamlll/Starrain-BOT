@@ -101,7 +101,6 @@ class ReverseWebSocketAdapter(BaseAdapter):
                 _get_logger().info("反向WS所有客户端已断开")
     
     def _format_message(self, data: Dict[str, Any]) -> str:
-        """格式化消息内容用于日志显示"""
         post_type = data.get('post_type', 'unknown')
         
         if post_type == 'message':
@@ -116,19 +115,27 @@ class ReverseWebSocketAdapter(BaseAdapter):
                 return f"[私聊] QQ:{user_id} - {raw_message}"
             else:
                 return f"{raw_message}"
-        
+        elif post_type == 'message_sent':
+            message_type = data.get('message_type', '')
+            user_id = data.get('user_id', 0)
+            group_id = data.get('group_id', 0)
+            raw_message = data.get('raw_message', '')
+            
+            if message_type == 'group':
+                return f"[已发送群:{group_id}] QQ:{user_id} - {raw_message}"
+            elif message_type == 'private':
+                return f"[已发送私聊] QQ:{user_id} - {raw_message}"
+            else:
+                return f"[已发送]{raw_message}"
         elif post_type == 'notice':
             notice_type = data.get('notice_type', '')
             return f"通知:{notice_type}"
-        
         elif post_type == 'request':
             request_type = data.get('request_type', '')
             return f"请求:{request_type}"
-        
         elif post_type == 'meta_event':
             meta_event_type = data.get('meta_event_type', '')
             return f"元事件:{meta_event_type}"
-        
         return str(data)
     
     async def start_server(self):
