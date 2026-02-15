@@ -176,6 +176,10 @@ class FriendAPI(NapCatAPI):
             'messages': messages
         })
         return result.get('message_id') if result else None
+    
+    async def friend_poke(self, user_id: int) -> bool:
+        result = await self.call('friend_poke', {'user_id': str(user_id)})
+        return result is not None
 
 
 class GroupAPI(NapCatAPI):
@@ -330,6 +334,15 @@ class GroupAPI(NapCatAPI):
             'reason': reason
         })
         return result is not None
+    
+    async def get_group_system_msg(self, count: int = 50) -> Optional[Dict]:
+        return await self.call('get_group_system_msg', {'count': str(count)})
+    
+    async def get_group_ignored_notifies(self) -> Optional[Dict]:
+        return await self.call('get_group_ignored_notifies', {})
+    
+    async def get_group_ignore_add_request(self) -> Optional[List[Dict]]:
+        return await self.call('get_group_ignore_add_request', {})
 
 
 class MessageAPI(NapCatAPI):
@@ -385,6 +398,221 @@ class MessageAPI(NapCatAPI):
     async def get_recent_contact(self, count: int = 10) -> Optional[List[Dict]]:
         result = await self.call('get_recent_contact', {'count': str(count)})
         return result.get('data') if result else None
+
+
+class GroupExtAPI(NapCatAPI):
+    """群扩展相关API"""
+    
+    async def get_group_info_ex(self, group_id: int) -> Optional[Dict]:
+        return await self.call('get_group_info_ex', {'group_id': str(group_id)})
+    
+    async def get_group_detail_info(self, group_id: int) -> Optional[Dict]:
+        return await self.call('get_group_detail_info', {'group_id': str(group_id)})
+    
+    async def set_group_sign(self, group_id: int) -> bool:
+        result = await self.call('set_group_sign', {'group_id': str(group_id)})
+        return result is not None
+    
+    async def send_group_sign(self, group_id: int) -> bool:
+        result = await self.call('send_group_sign', {'group_id': str(group_id)})
+        return result is not None
+    
+    async def set_group_todo(self, group_id: int, message_id: str = None,
+                            message_seq: str = None) -> bool:
+        params = {'group_id': str(group_id)}
+        if message_id:
+            params['message_id'] = message_id
+        if message_seq:
+            params['message_seq'] = message_seq
+        result = await self.call('set_group_todo', params)
+        return result is not None
+    
+    async def set_group_add_option(self, group_id: int, add_type: int,
+                                   question: str = None, answer: str = None) -> bool:
+        params = {'group_id': str(group_id), 'add_type': add_type}
+        if question:
+            params['group_question'] = question
+        if answer:
+            params['group_answer'] = answer
+        result = await self.call('set_group_add_option', params)
+        return result is not None
+    
+    async def set_group_robot_add_option(self, group_id: int, add_type: int) -> bool:
+        result = await self.call('set_group_robot_add_option', {
+            'group_id': str(group_id),
+            'add_type': add_type
+        })
+        return result is not None
+    
+    async def set_group_search(self, group_id: int, no_code_finger_open: int = None,
+                               no_finger_open: int = None) -> bool:
+        params = {'group_id': str(group_id)}
+        if no_code_finger_open is not None:
+            params['no_code_finger_open'] = no_code_finger_open
+        if no_finger_open is not None:
+            params['no_finger_open'] = no_finger_open
+        result = await self.call('set_group_search', params)
+        return result is not None
+    
+    async def set_group_remark(self, group_id: int, remark: str) -> bool:
+        result = await self.call('set_group_remark', {
+            'group_id': str(group_id),
+            'remark': remark
+        })
+        return result is not None
+    
+    async def get_qun_album_list(self, group_id: int) -> Optional[List[Dict]]:
+        return await self.call('get_qun_album_list', {'group_id': str(group_id)})
+    
+    async def get_group_album_media_list(self, group_id: int, album_id: str,
+                                         attach_info: str = '') -> Optional[Dict]:
+        return await self.call('get_group_album_media_list', {
+            'group_id': str(group_id),
+            'album_id': album_id,
+            'attach_info': attach_info
+        })
+    
+    async def upload_image_to_qun_album(self, group_id: int, album_id: str,
+                                        album_name: str, file: str) -> bool:
+        result = await self.call('upload_image_to_qun_album', {
+            'group_id': str(group_id),
+            'album_id': album_id,
+            'album_name': album_name,
+            'file': file
+        })
+        return result is not None
+    
+    async def del_group_album_media(self, group_id: int, album_id: str,
+                                    media_id: str) -> bool:
+        result = await self.call('del_group_album_media', {
+            'group_id': str(group_id),
+            'album_id': album_id,
+            'media_id': media_id
+        })
+        return result is not None
+    
+    async def set_group_album_media_like(self, group_id: int, album_id: str,
+                                         media_id: str, is_like: bool = True) -> bool:
+        result = await self.call('set_group_album_media_like', {
+            'group_id': str(group_id),
+            'album_id': album_id,
+            'media_id': media_id,
+            'is_like': str(is_like).lower()
+        })
+        return result is not None
+    
+    async def do_group_album_comment(self, group_id: int, album_id: str,
+                                     media_id: str, comment: str) -> bool:
+        result = await self.call('do_group_album_comment', {
+            'group_id': str(group_id),
+            'album_id': album_id,
+            'media_id': media_id,
+            'comment': comment
+        })
+        return result is not None
+
+
+class ArkAPI(NapCatAPI):
+    """小程序卡片/Ark消息相关API"""
+    
+    async def get_mini_app_ark(self, type: str = None, title: str = None,
+                               desc: str = None, pic_url: str = None,
+                               jump_url: str = None, icon_url: str = None,
+                               web_url: str = None, app_id: str = None,
+                               scene: str = None, template_type: str = None,
+                               business_type: str = None, ver_type: str = None,
+                               share_type: str = None, version_id: str = None,
+                               sdk_id: str = None, with_share_ticket: str = None,
+                               raw_ark_data: bool = False, **kwargs) -> Optional[Dict]:
+        params = {}
+        if type:
+            params['type'] = type
+        if title:
+            params['title'] = title
+        if desc:
+            params['desc'] = desc
+        if pic_url:
+            params['picUrl'] = pic_url
+        if jump_url:
+            params['jumpUrl'] = jump_url
+        if icon_url:
+            params['iconUrl'] = icon_url
+        if web_url:
+            params['webUrl'] = web_url
+        if app_id:
+            params['appId'] = app_id
+        if scene:
+            params['scene'] = scene
+        if template_type:
+            params['templateType'] = template_type
+        if business_type:
+            params['businessType'] = business_type
+        if ver_type:
+            params['verType'] = ver_type
+        if share_type:
+            params['shareType'] = share_type
+        if version_id:
+            params['versionId'] = version_id
+        if sdk_id:
+            params['sdkId'] = sdk_id
+        if with_share_ticket:
+            params['withShareTicket'] = with_share_ticket
+        if raw_ark_data:
+            params['rawArkData'] = str(raw_ark_data).lower()
+        params.update(kwargs)
+        return await self.call('get_mini_app_ark', params)
+    
+    async def get_mini_app_ark_bili(self, title: str, desc: str, pic_url: str,
+                                    jump_url: str, web_url: str = None) -> Optional[Dict]:
+        return await self.get_mini_app_ark(
+            type='bili', title=title, desc=desc,
+            pic_url=pic_url, jump_url=jump_url, web_url=web_url
+        )
+    
+    async def get_mini_app_ark_weibo(self, title: str, desc: str, pic_url: str,
+                                     jump_url: str, web_url: str = None) -> Optional[Dict]:
+        return await self.get_mini_app_ark(
+            type='weibo', title=title, desc=desc,
+            pic_url=pic_url, jump_url=jump_url, web_url=web_url
+        )
+    
+    async def ark_share_group(self, group_id: int) -> Optional[str]:
+        result = await self.call('ArkShareGroup', {'group_id': str(group_id)})
+        return result
+    
+    async def ark_share_peer(self, user_id: int = None, group_id: int = None,
+                             phone_number: str = '') -> Optional[Dict]:
+        params = {'phone_number': phone_number}
+        if user_id:
+            params['user_id'] = str(user_id)
+        if group_id:
+            params['group_id'] = str(group_id)
+        return await self.call('ArkSharePeer', params)
+    
+    async def send_group_ark_share(self, group_id: int) -> Optional[str]:
+        result = await self.call('send_group_ark_share', {'group_id': str(group_id)})
+        return result
+    
+    async def send_ark_share(self, user_id: int = None, group_id: int = None,
+                             phone_number: str = '') -> Optional[Dict]:
+        params = {'phone_number': phone_number}
+        if user_id:
+            params['user_id'] = str(user_id)
+        if group_id:
+            params['group_id'] = str(group_id)
+        return await self.call('send_ark_share', params)
+    
+    async def click_inline_keyboard_button(self, group_id: int, message_id: str,
+                                           button_id: str, callback_data: str = None) -> bool:
+        params = {
+            'group_id': str(group_id),
+            'message_id': message_id,
+            'button_id': button_id
+        }
+        if callback_data:
+            params['callback_data'] = callback_data
+        result = await self.call('click_inline_keyboard_button', params)
+        return result is not None
 
 
 class FileAPI(NapCatAPI):
@@ -475,6 +703,8 @@ class NapCatClient:
         self.account = AccountAPI(http_adapter)
         self.friend = FriendAPI(http_adapter)
         self.group = GroupAPI(http_adapter)
+        self.group_ext = GroupExtAPI(http_adapter)
+        self.ark = ArkAPI(http_adapter)
         self.message = MessageAPI(http_adapter)
         self.file = FileAPI(http_adapter)
     
