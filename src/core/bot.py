@@ -204,7 +204,10 @@ class Bot:
     
     async def send_group_message(self, group_id: int, message: Any) -> bool:
         """发送群消息"""
-        return await self.send_message('group', 0, group_id, message)
+        for adapter in self.adapters:
+            if adapter.is_connected():
+                return await adapter.send_message('group', 0, group_id, message)
+        return False
     
     async def send_private_message(self, user_id: int, message: Any) -> bool:
         """发送私聊消息"""
@@ -213,30 +216,25 @@ class Bot:
     async def set_group_ban(self, group_id: int, user_id: int, duration: int = 60) -> bool:
         for adapter in self.adapters:
             if adapter.is_connected():
-                if isinstance(adapter, HTTPAdapter):
-                    result = await adapter.call_api('set_group_ban', {
-                        'group_id': group_id,
-                        'user_id': user_id,
-                        'duration': duration,
-                    })
-                    if result is not None:
-                        return True
-                else:
-                    return await adapter.send({
-                        'action': 'set_group_ban',
-                        'params': {'group_id': group_id, 'user_id': user_id, 'duration': duration},
-                    })
+                result = await adapter.call_api('set_group_ban', {
+                    'group_id': group_id,
+                    'user_id': user_id,
+                    'duration': duration,
+                })
+                if result is not None:
+                    if isinstance(result, dict) and 'status' in result:
+                        return result.get('status') == 'ok'
+                    return True
         return False
     
     async def bot_exit(self) -> bool:
         for adapter in self.adapters:
             if adapter.is_connected():
-                if isinstance(adapter, HTTPAdapter):
-                    result = await adapter.call_api('bot_exit', {})
-                    if result is not None:
-                        return True
-                else:
-                    return await adapter.bot_exit()
+                result = await adapter.call_api('bot_exit', {})
+                if result is not None:
+                    if isinstance(result, dict) and 'status' in result:
+                        return result.get('status') == 'ok'
+                    return True
         return False
 
     async def start(self):

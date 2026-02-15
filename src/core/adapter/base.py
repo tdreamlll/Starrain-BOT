@@ -20,6 +20,8 @@ class BaseAdapter(ABC):
         self._event_handlers = []
         self._stop_event = asyncio.Event()
         self.adapter_name = self.__class__.__name__
+        self._echo_counter = 0
+        self._pending_requests: Dict[Any, asyncio.Future] = {}
     
     @abstractmethod
     async def connect(self) -> bool:
@@ -36,13 +38,58 @@ class BaseAdapter(ABC):
         pass
     
     async def send_message(self, message_type: str, user_id: int, group_id: Optional[int] = None, message: Any = '') -> bool:
-        params = {'action': 'send_msg', 'params': {'message_type': message_type, 'user_id': user_id, 'message': message}}
-        if group_id:
-            params['params']['group_id'] = group_id
-        return await self.send(params)
+        echo = self._get_next_echo()
+        params = {'message_type': message_type, 'message': message}
+        
+        if message_type == 'group':
+            if group_id:
+                params['group_id'] = group_id
+        elif message_type == 'private':
+            params['user_id'] = user_id
+        
+        request = {'action': 'send_msg', 'params': params, 'echo': echo}
+        return await self.send(request)
+    
+    async def call_api(self, action: str, params: Optional[Dict[str, Any]] = None, timeout: float = 10.0) -> Optional[Dict[str, Any]]:
+        echo = self._get_next_echo()
+        request = {'action': action, 'params': params or {}, 'echo': echo}
+        future = asyncio.get_event_loop().create_future()
+        self._pending_requests[echo] = future
+        try:
+            success = await self.send(request)
+            if not success:
+                _get_logger().warning(f"{self.adapter_name} API 请求发送失败: {action}")
+                return None
+            return await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError:
+            _get_logger().warning(f"{self.adapter_name} API 调用超时: {action}")
+            return None
+        except Exception as e:
+            _get_logger().error(f"{self.adapter_name} API 调用失败: {e}")
+            return None
+        finally:
+            self._pending_requests.pop(echo, None)
+    
+    def _get_next_echo(self) -> int:
+        self._echo_counter += 1
+        return self._echo_counter
+    
+    def handle_api_response(self, response: Dict[str, Any]):
+        echo = response.get('echo')
+        if echo is not None and echo in self._pending_requests:
+            future = self._pending_requests[echo]
+            if not future.done():
+                status = response.get('status', '')
+                if status == 'failed':
+                    retcode = response.get('retcode', 0)
+                    data = response.get('data')
+                    error_msg = data if isinstance(data, str) else response.get('wording', '未知错误')
+                    _get_logger().warning(f"{self.adapter_name} API 调用失败: retcode={retcode}, {error_msg}")
+                future.set_result(response)
     
     async def bot_exit(self) -> bool:
-        return await self.send({'action': 'bot_exit', 'params': {}})
+        echo = self._get_next_echo()
+        return await self.send({'action': 'bot_exit', 'params': {}, 'echo': echo})
     
     @abstractmethod
     async def receive(self) -> Optional[Dict[str, Any]]:

@@ -149,20 +149,24 @@ class HTTPAdapter(BaseAdapter):
         except Exception as e:
             _get_logger().error(f"事件处理错误: {e}")
     
-    async def call_api(self, action: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def call_api(self, action: str, params: Optional[Dict[str, Any]] = None, timeout: float = 30.0) -> Optional[Dict[str, Any]]:
         if not self.session:
             _get_logger().error("HTTP会话未初始化")
             return None
         
+        params = params or {}
         try:
             url = f"{self.api_url}/{action}"
             async with self.session.post(url, json=params) as response:
                 result = await response.json()
-                if result.get('retcode') == 0:
-                    return result.get('data')
-                else:
-                    _get_logger().error(f"API调用失败 {action}: {result}")
-                    return None
+                retcode = result.get('retcode', 0)
+                status = result.get('status', 'ok' if retcode == 0 else 'failed')
+                
+                if status == 'failed':
+                    error_msg = result.get('wording', '') or result.get('data', '未知错误')
+                    _get_logger().warning(f"HTTP API 调用失败: {action}, retcode={retcode}, {error_msg}")
+                
+                return {'status': status, 'retcode': retcode, 'data': result.get('data'), 'echo': None}
         except Exception as e:
             _get_logger().error(f"API调用错误 {action}: {e}")
             return None
@@ -170,26 +174,30 @@ class HTTPAdapter(BaseAdapter):
     async def send_message(self, message_type: str, user_id: int, group_id: Optional[int] = None, message: Any = '') -> bool:
         params = {
             'message_type': message_type,
-            'user_id': user_id,
             'message': self._format_message_content(message)
         }
-        if group_id:
+        if message_type == 'group' and group_id:
             params['group_id'] = group_id
+        elif message_type == 'private':
+            params['user_id'] = user_id
         result = await self.call_api('send_msg', params)
-        return result is not None
+        return result is not None and result.get('status') == 'ok'
     
     async def bot_exit(self) -> bool:
         result = await self.call_api('bot_exit', {})
-        return result is not None
+        return result is not None and result.get('status') == 'ok'
     
     async def get_login_info(self) -> Optional[Dict[str, Any]]:
-        return await self.call_api('get_login_info', {})
+        result = await self.call_api('get_login_info', {})
+        return result.get('data') if result and result.get('status') == 'ok' else None
     
     async def get_status(self) -> Optional[Dict[str, Any]]:
-        return await self.call_api('get_status', {})
+        result = await self.call_api('get_status', {})
+        return result.get('data') if result and result.get('status') == 'ok' else None
     
     async def get_version_info(self) -> Optional[Dict[str, Any]]:
-        return await self.call_api('get_version_info', {})
+        result = await self.call_api('get_version_info', {})
+        return result.get('data') if result and result.get('status') == 'ok' else None
     
     def _format_message_content(self, message: Any) -> Any:
         if isinstance(message, str) and message.startswith(('base64://', 'data:', 'file://')):

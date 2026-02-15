@@ -1,5 +1,7 @@
 import asyncio
 import websockets
+from websockets.client import connect as ws_connect, WebSocketClientProtocol
+from websockets.exceptions import ConnectionClosed
 import json
 from typing import Dict, Any, Optional
 from .base import BaseAdapter
@@ -16,7 +18,7 @@ class WebSocketAdapter(BaseAdapter):
         super().__init__(config)
         self.url = config.get('url', 'ws://localhost:3001')
         self.access_token = config.get('access_token', '')
-        self.websocket: Optional[websockets.WebSocketClientProtocol] = None
+        self.websocket: Optional[WebSocketClientProtocol] = None
         self._receive_task = None
     
     async def connect(self) -> bool:
@@ -27,9 +29,9 @@ class WebSocketAdapter(BaseAdapter):
                 headers['Authorization'] = f'Bearer {self.access_token}'
             
             _get_logger().info(f"WS正在连接 {self.url}...")
-            self.websocket = await websockets.connect(
+            self.websocket = await ws_connect(
                 self.url,
-                additional_headers=headers,
+                extra_headers=headers,
                 ping_interval=None,
                 close_timeout=10
             )
@@ -101,16 +103,20 @@ class WebSocketAdapter(BaseAdapter):
             try:
                 data = await self.receive()
                 if data:
-                    post_type = data.get('post_type', 'unknown')
-                    msg_detail = self._format_message(data)
-                    print(f"[WS] 收到{post_type}: {msg_detail}")
-                    await self.emit_event(data)
-            except websockets.exceptions.ConnectionClosed:
+                    if 'echo' in data:
+                        self.handle_api_response(data)
+                        continue
+                    
+                    post_type = data.get('post_type')
+                    if post_type:
+                        msg_detail = self._format_message(data)
+                        print(f"[WS] 收到{post_type}: {msg_detail}")
+                        await self.emit_event(data)
+            except ConnectionClosed:
                 print(f"[WS] 连接已关闭")
                 self.connected = False
                 if self.auto_reconnect:
                     print(f"[WS] 自动重连...")
-                    # 使用自定义重连循环，避免递归深度过大
                     asyncio.create_task(self._reconnect_loop_from_disconnect())
                 break
             except Exception as e:
@@ -147,8 +153,7 @@ class WebSocketAdapter(BaseAdapter):
                 return f"[已发送]{raw_message}"
         
         elif post_type == 'notice':
-            notice_type = data.get('notice_type', '')
-            return f"通知:{notice_type}"
+            return self._format_notice(data)
         
         elif post_type == 'request':
             request_type = data.get('request_type', '')
@@ -159,6 +164,71 @@ class WebSocketAdapter(BaseAdapter):
             return f"元事件:{meta_event_type}"
         
         return str(data)
+    
+    def _format_notice(self, data: Dict[str, Any]) -> str:
+        notice_type = data.get('notice_type', '')
+        group_id = data.get('group_id', 0)
+        user_id = data.get('user_id', 0)
+        sub_type = data.get('sub_type', '')
+        
+        if notice_type == 'group_upload':
+            file_info = data.get('file', {})
+            file_name = file_info.get('name', '未知文件')
+            return f"[群:{group_id}] 文件上传: {file_name} (QQ:{user_id})"
+        
+        elif notice_type == 'group_admin':
+            action = "设为管理员" if sub_type == 'set' else "取消管理员"
+            return f"[群:{group_id}] {action}: QQ:{user_id}"
+        
+        elif notice_type == 'group_decrease':
+            if sub_type == 'leave':
+                return f"[群:{group_id}] 成员退群: QQ:{user_id}"
+            elif sub_type == 'kick':
+                operator_id = data.get('operator_id', 0)
+                return f"[群:{group_id}] 成员被踢: QQ:{user_id} (操作者:{operator_id})"
+            elif sub_type == 'kick_me':
+                return f"[群:{group_id}] 机器人被踢出"
+            return f"[群:{group_id}] 成员减少: QQ:{user_id}"
+        
+        elif notice_type == 'group_increase':
+            operator_id = data.get('operator_id', 0)
+            way = "同意入群" if sub_type == 'approve' else "邀请入群"
+            return f"[群:{group_id}] 新成员{way}: QQ:{user_id} (操作者:{operator_id})"
+        
+        elif notice_type == 'group_ban':
+            duration = data.get('duration', 0)
+            operator_id = data.get('operator_id', 0)
+            if sub_type == 'ban':
+                return f"[群:{group_id}] 禁言: QQ:{user_id} {duration}秒 (操作者:{operator_id})"
+            else:
+                return f"[群:{group_id}] 解除禁言: QQ:{user_id} (操作者:{operator_id})"
+        
+        elif notice_type == 'friend_add':
+            return f"新增好友: QQ:{user_id}"
+        
+        elif notice_type == 'group_recall':
+            operator_id = data.get('operator_id', 0)
+            message_id = data.get('message_id', 0)
+            return f"[群:{group_id}] 消息撤回: QQ:{user_id} (操作者:{operator_id}) msg_id:{message_id}"
+        
+        elif notice_type == 'friend_recall':
+            message_id = data.get('message_id', 0)
+            return f"好友消息撤回: QQ:{user_id} msg_id:{message_id}"
+        
+        elif notice_type == 'notify':
+            target_id = data.get('target_id', 0)
+            if sub_type == 'poke':
+                return f"[群:{group_id}] 戳一戳: QQ:{user_id} -> QQ:{target_id}"
+            elif sub_type == 'lucky_king':
+                return f"[群:{group_id}] 红包运气王: QQ:{target_id}"
+            elif sub_type == 'honor':
+                honor_type = data.get('honor_type', '')
+                honor_names = {'talkative': '龙王', 'performer': '群聊之火', 'emotion': '快乐源泉'}
+                honor_name = honor_names.get(honor_type, honor_type)
+                return f"[群:{group_id}] 荣誉变更: QQ:{user_id} 获得{honor_name}"
+            return f"[群:{group_id}] 通知: {sub_type}"
+        
+        return f"通知:{notice_type}"
     
     async def _reconnect_loop(self):
         """重连循环（用于初始连接失败后）"""
@@ -180,9 +250,9 @@ class WebSocketAdapter(BaseAdapter):
                         headers['Authorization'] = f'Bearer {self.access_token}'
                     
                     print(f"[WS] 正在连接 {self.url}...")
-                    self.websocket = await websockets.connect(
+                    self.websocket = await ws_connect(
                         self.url,
-                        additional_headers=headers,
+                        extra_headers=headers,
                         ping_interval=None,
                         close_timeout=10
                     )
@@ -221,9 +291,9 @@ class WebSocketAdapter(BaseAdapter):
                     headers['Authorization'] = f'Bearer {self.access_token}'
                 
                 print(f"[WS] 正在连接 {self.url}...")
-                self.websocket = await websockets.connect(
+                self.websocket = await ws_connect(
                     self.url,
-                    additional_headers=headers,
+                    extra_headers=headers,
                     ping_interval=None,
                     close_timeout=10
                 )
