@@ -8,4 +8,6 @@ rich>=13.7.0
 aiofiles>=24.1.0
 pymysql>=1.1.0
 pyppeteer>=1.0.2
-psutil >=7.2.2
+psutil>=7.2.2
+fastapi>=0.109.0
+uvicorn>=0.27.0

@@ -11,7 +11,7 @@ onebot:
   
   # HTTP POST上报配置 (NapCat推送事件到你的服务器)
   http_post_enabled: true
-  http_post_host: "0.0.0.0"
+  http_post_host: "127.0.0.1"
   http_post_port: 5700
   http_post_secret: ""
   
@@ -124,3 +124,18 @@ mysql:
   database: "starrain_bot"
   # 字符集
   charset: "utf8mb4"
+
+# Web管理后台配置
+web:
+  # 是否启用Web管理后台
+  enabled: true
+  # 监听地址
+  host: "127.0.0.1"
+  # 监听端口
+  port: 8080
+  # 访问密钥 (留空则不验证)
+  secret: ""
+  # 登录用户名
+  username: "admin"
+  # 登录密码
+  password: "admin123"

@@ -30,6 +30,7 @@ except ImportError as e:
     sys.exit(1)
 
 from src.utils.logger import get_logger
+from src.web import init_web, run_web_server
 
 get_logger({'level': 'INFO', 'console': True, 'color': True, 'file': 'logs/bot.log'})
 
@@ -405,6 +406,13 @@ async def main():
         logger.info("正在注册命令...")
         await register_commands(bot)
         logger.success("命令已注册")
+        
+        web_cfg = config.get('web', {})
+        if web_cfg.get('enabled', True):
+            logger.info("正在初始化Web管理后台...")
+            init_web(bot, config)
+            asyncio.create_task(run_web_server())
+        
         logger.info("正在启动机器人... 按 Ctrl+C 停止")
 
         try:

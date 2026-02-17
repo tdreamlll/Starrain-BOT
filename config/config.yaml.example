@@ -6,17 +6,31 @@ onebot:
   # 连接类型 (只能选择一种): ws, reverse_ws, http
   # ws: 主动连接NapCat的WebSocket服务器 (正向连接)
   # reverse_ws: NapCat主动连接到机器人的WebSocket服务器 (反向连接)
-  # http: 使用HTTP API调用NapCat
+  # http: 使用HTTP API调用NapCat，同时接收NapCat的HTTP POST事件上报
   connection_type: "http"
   
   # 正向WebSocket配置 (connection_type为ws时使用)
   url: "ws://localhost:3001"
   
-  # 访问令牌 (NapCat中未设置则留空)
+  # 访问令牌 (NapCat中设置的access_token，未设置则留空)
   access_token: ""
   
-  # HTTP配置 (connection_type为http时使用)
+  # ============== HTTP配置 (connection_type为http时使用) ==============
+  # NapCat HTTP API地址 (用于调用NapCat的API)
   http_url: "http://localhost:3000"
+  
+  # HTTP POST上报服务器配置 (接收NapCat推送的事件)
+  # NapCat需要配置httpClients指向此地址
+  http_post_enabled: true
+  http_post_host: "0.0.0.0"
+  http_post_port: 5700
+  
+  # HTTP POST签名密钥 (与NapCat中httpClients的secret对应，留空则不验证)
+  http_post_secret: ""
+  
+  # API请求超时时间 (秒)
+  timeout: 30
+
   
   # 反向WebSocket配置 (connection_type为reverse_ws时使用)
   reverse_ws_url: "ws://localhost:3002"
@@ -142,3 +156,25 @@ mysql:
   database: "starrain_bot"
   # Character set
   charset: "utf8mb4"
+
+# Web Admin Panel Configuration
+# Web管理后台配置
+web:
+  # Enable web admin panel
+  # 是否启用Web管理后台
+  enabled: true
+  # Listen address
+  # 监听地址
+  host: "0.0.0.0"
+  # Listen port
+  # 监听端口
+  port: 8080
+  # Access secret (leave empty to disable authentication)
+  # 访问密钥 (留空则不验证)
+  secret: ""
+  # Login username
+  # 登录用户名
+  username: "admin"
+  # Login password
+  # 登录密码
+  password: "admin123"
