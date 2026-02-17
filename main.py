@@ -192,7 +192,7 @@ async def register_commands(bot: Bot):
             await bot.send_group_message(group_id, _help_text(permission_level))
             return
         if command == '/version':
-            await bot.send_group_message(group_id, "Starrain-BOT v1.0.0 - 基于OneBot v11")
+            await bot.send_group_message(group_id, "Starrain-BOT v1.3.7 - 基于OneBot v11")
             return
         if command == '/plugins':
             lines = ["已加载插件:"]
