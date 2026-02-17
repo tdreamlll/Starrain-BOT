@@ -169,9 +169,9 @@ class HTTPAdapter(BaseAdapter):
             
             asyncio.create_task(self._process_event(event_data))
             
-            return web.Response(
+            return web.json_response(
+                {},
                 status=200,
-                text="OK",
                 headers={'Access-Control-Allow-Origin': '*'}
             )
             
