@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Starrain-BOT 管理后台</title>
+<link rel="stylesheet" href="/static/css/main.css">
+<script src="https://unpkg.com/vue@3.4.21/dist/vue.global.prod.js" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="app">
+<aside class="sidebar">
+<div class="sidebar-header">
+<div class="sidebar-brand">Starrain-BOT</div>
+<div class="sidebar-status">
+<span class="status-dot" :class="{disconnected:!wsConnected}"></span>
+<span>{{ wsConnected ? '实时连接' : '连接断开' }}</span>
+</div>
+</div>
+<nav class="sidebar-nav">
+<div class="nav-item" :class="{active:page==='dashboard'}" @click="page='dashboard'"><span>📊</span> 仪表盘</div>
+<div class="nav-item" :class="{active:page==='message'}" @click="page='message';loadContacts()"><span>💬</span> 消息发送</div>
+<div class="nav-item" :class="{active:page==='plugins'}" @click="page='plugins'"><span>🔌</span> 插件管理</div>
+<div class="nav-item" :class="{active:page==='permissions'}" @click="page='permissions'"><span>👥</span> 权限管理</div>
+<div class="nav-item" :class="{active:page==='blacklist'}" @click="page='blacklist'"><span>🚫</span> 群黑名单</div>
+<div class="nav-item" :class="{active:page==='logs'}" @click="page='logs'"><span>📋</span> 实时日志</div>
+<div class="nav-item" :class="{active:page==='system'}" @click="page='system'"><span>⚙️</span> 系统操作</div>
+<div class="nav-item" @click="doLogout" style="margin-top:auto;border-top:1px solid var(--border-color);padding-top:16px"><span>🚪</span> 退出登录</div>
+</nav>
+</aside>
+<main class="main-content">
+<div v-if="page==='dashboard'">
+<div class="page-header"><h1 class="page-title">仪表盘</h1><p class="page-desc">机器人运行状态概览</p></div>
+<div class="stats-grid">
+<div class="stat-card"><div class="stat-label">机器人QQ</div><div class="stat-value">{{ status.qq || '-' }}</div></div>
+<div class="stat-card"><div class="stat-label">运行时间</div><div class="stat-value success">{{ status.uptime_formatted || '-' }}</div></div>
+<div class="stat-card"><div class="stat-label">已加载插件</div><div class="stat-value">{{ status.plugins_count || 0 }} / {{ status.enabled_plugins_count || 0 }}</div></div>
+<div class="stat-card"><div class="stat-label">运行状态</div><div class="stat-value" :class="status.running?'success':'danger'">{{ status.running?'运行中':'已停止' }}</div></div>
+</div>
+<div class="card">
+<h3 class="card-title">🖥️ 适配器状态</h3>
+<div class="table-container">
+<table><thead><tr><th>适配器</th><th>状态</th></tr></thead>
+<tbody><tr v-for="a in status.adapters" :key="a.name"><td>{{ a.name }}</td><td><span class="badge" :class="a.connected?'badge-success':'badge-danger'">{{ a.connected?'已连接':'未连接' }}</span></td></tr></tbody>
+</table>
+</div>
+</div>
+<div class="card" v-if="status.system">
+<h3 class="card-title">💻 系统信息</h3>
+<div class="stats-grid">
+<div class="stat-card"><div class="stat-label">Python版本</div><div class="stat-value">{{ status.system.python }}</div></div>
+<div class="stat-card"><div class="stat-label">操作系统</div><div class="stat-value">{{ status.system.platform }}</div></div>
+<div class="stat-card"><div class="stat-label">CPU使用</div><div class="stat-value">{{ status.system.cpu_percent }}%</div></div>
+<div class="stat-card"><div class="stat-label">内存使用</div><div class="stat-value">{{ status.system.memory.percent }}%</div><div class="progress-bar"><div class="progress-fill" :style="{width:status.system.memory.percent+'%'}"></div></div></div>
+</div>
+</div>
+</div>
+
+<div v-if="page==='message'">
+<div class="page-header"><h1 class="page-title">消息发送</h1><p class="page-desc">向好友或群发送消息</p></div>
+<div class="card">
+<div class="tab-container">
+<button class="tab-btn" :class="{active:msgTab==='group'}" @click="msgTab='group'">群聊</button>
+<button class="tab-btn" :class="{active:msgTab==='private'}" @click="msgTab='private'">私聊</button>
+</div>
+<div class="message-panel">
+<div class="card" style="margin:0">
+<h3 class="card-title">{{ msgTab==='group'?'群列表':'好友列表' }}</h3>
+<div class="contact-list">
+<div v-if="contactsLoading" class="empty-state">加载中...</div>
+<template v-else-if="msgTab==='group'">
+<div class="contact-item" v-for="g in groups" :key="g.group_id" :class="{selected:selected===g.group_id}" @click="selected=g.group_id"><div style="font-weight:600">{{ g.group_name || g.group_id }}</div><div style="font-size:12px;color:var(--text-secondary)">{{ g.group_id }} · {{ g.member_count || '?' }}人</div></div>
+<div class="empty-state" v-if="groups.length===0">暂无群</div>
+</template>
+<template v-else>
+<div class="contact-item" v-for="f in friends" :key="f.user_id" :class="{selected:selected===f.user_id}" @click="selected=f.user_id"><div style="font-weight:600">{{ f.nickname || f.user_id }}</div><div style="font-size:12px;color:var(--text-secondary)">{{ f.user_id }}</div></div>
+<div class="empty-state" v-if="friends.length===0">暂无好友</div>
+</template>
+</div>
+</div>
+<div class="message-input-area">
+<div class="form-group"><label class="form-label">{{ msgTab==='group'?'群号':'QQ号' }}</label><input type="text" class="form-input" v-model.number="selected" :placeholder="msgTab==='group'?'输入群号':'输入QQ号'"></div>
+<div class="form-group"><label class="form-label">消息内容</label><textarea class="form-input message-input" v-model="msgContent" placeholder="输入要发送的消息..."></textarea></div>
+<button class="btn btn-primary" @click="doSendMsg" :disabled="sendingMsg">{{ sendingMsg?'发送中...':'发送消息' }}</button>
+</div>
+</div>
+</div>
+</div>
+
+<div v-if="page==='plugins'">
+<div class="page-header"><h1 class="page-title">插件管理</h1><p class="page-desc">管理机器人插件</p></div>
+<div class="card">
+<div class="table-container">
+<table><thead><tr><th>插件名称</th><th>版本</th><th>作者</th><th>描述</th><th>状态</th><th>操作</th></tr></thead>
+<tbody><tr v-for="p in plugins" :key="p.name"><td><strong>{{ p.name }}</strong></td><td>v{{ p.version }}</td><td>{{ p.author }}</td><td>{{ p.description || '-' }}</td><td><span class="badge" :class="p.enabled?'badge-success':'badge-danger'">{{ p.enabled?'已启用':'已禁用' }}</span></td><td><div class="actions"><button class="btn btn-secondary btn-sm" v-if="!p.enabled" @click="doEnablePlugin(p.name)">启用</button><button class="btn btn-secondary btn-sm" v-else @click="doDisablePlugin(p.name)">禁用</button><button class="btn btn-secondary btn-sm" @click="doReloadPlugin(p.name)">重载</button></div></td></tr></tbody>
+</table>
+</div>
+<div class="empty-state" v-if="plugins.length===0">暂无插件</div>
+</div>
+</div>
+
+<div v-if="page==='permissions'">
+<div class="page-header"><h1 class="page-title">权限管理</h1><p class="page-desc">管理机器人权限用户</p></div>
+<div class="card">
+<h3 class="card-title">🔶 3级管理员</h3>
+<div class="form-group" style="display:flex;gap:12px;margin-bottom:16px;align-items:center"><input type="text" class="form-input" v-model.trim="newAdmin" placeholder="输入QQ号" style="flex:1;min-width:250px" @keyup.enter="doAddAdmin"><button class="btn btn-primary btn-sm" @click="doAddAdmin">添加</button></div>
+<div class="table-container"><table><thead><tr><th>QQ号</th><th>操作</th></tr></thead><tbody><tr v-for="qq in perms.admins" :key="qq"><td>{{ qq }}</td><td><button class="btn btn-danger btn-sm" @click="doRemoveAdmin(qq)">移除</button></td></tr></tbody></table></div>
+</div>
+<div class="card">
+<h3 class="card-title">🟠 4级所有者</h3>
+<div class="form-group" style="display:flex;gap:12px;margin-bottom:16px;align-items:center"><input type="text" class="form-input" v-model.trim="newOwner" placeholder="输入QQ号" style="flex:1;min-width:250px" @keyup.enter="doAddOwner"><button class="btn btn-primary btn-sm" @click="doAddOwner">添加</button></div>
+<div class="table-container"><table><thead><tr><th>QQ号</th><th>操作</th></tr></thead><tbody><tr v-for="qq in perms.owners" :key="qq"><td>{{ qq }}</td><td><button class="btn btn-danger btn-sm" @click="doRemoveOwner(qq)">移除</button></td></tr></tbody></table></div>
+</div>
+<div class="card">
+<h3 class="card-title">🔴 5级开发者</h3>
+<div class="form-group" style="display:flex;gap:12px;margin-bottom:16px;align-items:center"><input type="text" class="form-input" v-model.trim="newDev" placeholder="输入QQ号" style="flex:1;min-width:250px" @keyup.enter="doAddDev"><button class="btn btn-primary btn-sm" @click="doAddDev">添加</button></div>
+<div class="table-container"><table><thead><tr><th>QQ号</th><th>操作</th></tr></thead><tbody><tr v-for="qq in perms.developers" :key="qq"><td>{{ qq }}</td><td><button class="btn btn-danger btn-sm" @click="doRemoveDev(qq)">移除</button></td></tr></tbody></table></div>
+</div>
+</div>
+
+<div v-if="page==='blacklist'">
+<div class="page-header"><h1 class="page-title">群黑名单</h1><p class="page-desc">管理被拉黑的群</p></div>
+<div class="card">
+<div class="form-group" style="display:flex;gap:12px;margin-bottom:16px;align-items:center"><input type="text" class="form-input" v-model.trim="newBl" placeholder="输入群号" style="flex:1;min-width:250px" @keyup.enter="doAddBl"><button class="btn btn-primary btn-sm" @click="doAddBl">添加黑名单</button></div>
+<div class="table-container"><table><thead><tr><th>群号</th><th>操作</th></tr></thead><tbody><tr v-for="g in blacklist" :key="g"><td>{{ g }}</td><td><button class="btn btn-danger btn-sm" @click="doRemoveBl(g)">移除</button></td></tr></tbody></table></div>
+<div class="empty-state" v-if="blacklist.length===0">暂无黑名单群</div>
+</div>
+</div>
+
+<div v-if="page==='logs'">
+<div class="page-header"><h1 class="page-title">实时日志</h1><p class="page-desc">查看机器人运行日志 (WebSocket实时推送)</p></div>
+<div class="card">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+<span class="stat-label">实时日志 (共{{ logs.length }}条)</span>
+<div class="actions">
+<button class="btn btn-secondary btn-sm" @click="autoScroll=!autoScroll">{{ autoScroll?'停止滚动':'自动滚动' }}</button>
+<button class="btn btn-secondary btn-sm" @click="logs=[]">清空</button>
+<button class="btn btn-secondary btn-sm" @click="loadLogs">刷新历史</button>
+</div>
+</div>
+<div class="log-container" ref="logBox" style="position:relative;max-height:600px">
+<div class="log-line" v-for="(log,i) in logs" :key="i" :class="getLogClass(log)">{{ log }}</div>
+<div class="empty-state" v-if="logs.length===0">暂无日志</div>
+</div>
+</div>
+</div>
+
+<div v-if="page==='system'">
+<div class="page-header"><h1 class="page-title">系统操作</h1><p class="page-desc">机器人系统控制</p></div>
+<div class="card">
+<h3 class="card-title">⚠️ 危险操作</h3>
+<p style="color:var(--text-secondary);margin-bottom:24px">以下操作会影响机器人运行状态，请谨慎操作。</p>
+<div class="actions">
+<button class="btn btn-warning" @click="showRestart=true">重启机器人</button>
+<button class="btn btn-danger" @click="showShutdown=true">关闭机器人</button>
+</div>
+</div>
+</div>
+</main>
+
+<div class="modal-overlay" v-if="showRestart" @click.self="showRestart=false">
+<div class="modal"><h3 class="modal-title">确认重启</h3><p style="color:var(--text-secondary)">确定要重启机器人吗？重启期间机器人将无法响应消息。</p><div class="modal-actions"><button class="btn btn-secondary" @click="showRestart=false">取消</button><button class="btn btn-warning" @click="doRestart">确认重启</button></div></div>
+</div>
+<div class="modal-overlay" v-if="showShutdown" @click.self="showShutdown=false">
+<div class="modal"><h3 class="modal-title">确认关闭</h3><p style="color:var(--text-secondary)">确定要关闭机器人吗？关闭后需要手动重启。</p><div class="modal-actions"><button class="btn btn-secondary" @click="showShutdown=false">取消</button><button class="btn btn-danger" @click="doShutdown">确认关闭</button></div></div>
+</div>
+<div class="toast" :class="'toast-'+toast.type" v-if="toast.show">{{ toast.msg }}</div>
+</div>
+<script type="module">
+import{getToken,clearToken,logout,checkAuth}from'/static/js/auth.js';
+import{connectWS,disconnectWS}from'/static/js/websocket.js';
+import{fetchStatus,fetchPlugins,enablePlugin,disablePlugin,reloadPlugin,fetchPermissions,addAdmin,removeAdmin,addOwner,removeOwner,addDeveloper,removeDeveloper,fetchBlacklist,addBlacklist,removeBlacklist,fetchLogs,fetchGroups,fetchFriends,sendMessage,restartBot,shutdownBot,sanitizeError}from'/static/js/services.js';
+const{createApp,ref,reactive,onMounted,onUnmounted,watch,nextTick}=Vue;
+createApp({
+setup(){
+const page=ref('dashboard');
+const wsConnected=ref(false);
+const token=getToken();
+const status=reactive({qq:0,uptime:0,uptime_formatted:'',running:false,adapters:[],plugins_count:0,enabled_plugins_count:0,system:null});
+const plugins=ref([]);
+const perms=reactive({admins:[],owners:[],developers:[]});
+const blacklist=ref([]);
+const logs=ref([]);
+const autoScroll=ref(true);
+const logBox=ref(null);
+const msgTab=ref('group');
+const groups=ref([]);
+const friends=ref([]);
+const selected=ref(null);
+const msgContent=ref('');
+const contactsLoading=ref(false);
+const sendingMsg=ref(false);
+const newAdmin=ref('');
+const newOwner=ref('');
+const newDev=ref('');
+const newBl=ref('');
+const showRestart=ref(false);
+const showShutdown=ref(false);
+const toast=reactive({show:false,msg:'',type:'success'});
+let refreshTimer=null;
+const showToast=(msg,type='success')=>{toast.msg=msg;toast.type=type;toast.show=true;setTimeout(()=>{toast.show=false},3000);};
+const loadStatus=async()=>{try{Object.assign(status,await fetchStatus(token));}catch(e){}};
+const loadPlugins=async()=>{try{plugins.value=await fetchPlugins(token);}catch(e){}};
+const loadPerms=async()=>{try{Object.assign(perms,await fetchPermissions(token));}catch(e){}};
+const loadBlacklist=async()=>{try{blacklist.value=await fetchBlacklist(token);}catch(e){}};
+const loadLogs=async()=>{try{logs.value=await fetchLogs(token);}catch(e){}};
+const loadContacts=async()=>{if(msgTab.value==='group'&&groups.value.length===0){contactsLoading.value=true;try{groups.value=await fetchGroups(token);}catch(e){}contactsLoading.value=false;}else if(msgTab.value==='private'&&friends.value.length===0){contactsLoading.value=true;try{friends.value=await fetchFriends(token);}catch(e){}contactsLoading.value=false;}};
+const getLogClass=(log)=>{if(log.includes('ERROR')||log.includes('error'))return'log-error';if(log.includes('WARNING')||log.includes('warning'))return'log-warning';if(log.includes('SUCCESS')||log.includes('success'))return'log-success';if(log.includes('INFO')||log.includes('info'))return'log-info';return'';};
+const scrollToBottom=()=>{if(autoScroll.value&&logBox.value){nextTick(()=>{logBox.value.scrollTop=logBox.value.scrollHeight;});}};
+const doLogout=async()=>{await logout(token);clearToken();disconnectWS();if(refreshTimer)clearInterval(refreshTimer);location.href='/';};
+const doSendMsg=async()=>{if(!selected.value||!msgContent.value.trim()){showToast('请选择联系人并输入消息','error');return;}sendingMsg.value=true;try{await sendMessage(token,msgTab.value,msgTab.value==='private'?selected.value:null,msgTab.value==='group'?selected.value:null,msgContent.value);showToast('消息发送成功');msgContent.value='';}catch(e){showToast(sanitizeError(e.message),'error');}sendingMsg.value=false;};
+const doEnablePlugin=async(name)=>{try{await enablePlugin(token,name);showToast('插件已启用');loadPlugins();}catch(e){showToast(sanitizeError(e.message),'error');}};
+const doDisablePlugin=async(name)=>{try{await disablePlugin(token,name);showToast('插件已禁用');loadPlugins();}catch(e){showToast(sanitizeError(e.message),'error');}};
+const doReloadPlugin=async(name)=>{try{await reloadPlugin(token,name);showToast('插件已重载');loadPlugins();}catch(e){showToast(sanitizeError(e.message),'error');}};
+const doAddAdmin=async()=>{const qq=parseInt(newAdmin.value);if(!qq||qq<=0){showToast('请输入有效的QQ号','error');return;}try{await addAdmin(token,qq);showToast('管理员已添加');newAdmin.value='';loadPerms();}catch(e){showToast(sanitizeError(e.message),'error');}};
+const doRemoveAdmin=async(qq)=>{try{await removeAdmin(token,qq);showToast('管理员已移除');loadPerms();}catch(e){showToast(sanitizeError(e.message),'error');}};
+const doAddOwner=async()=>{const qq=parseInt(newOwner.value);if(!qq||qq<=0){showToast('请输入有效的QQ号','error');return;}try{await addOwner(token,qq);showToast('所有者已添加');newOwner.value='';loadPerms();}catch(e){showToast(sanitizeError(e.message),'error');}};
+const doRemoveOwner=async(qq)=>{try{await removeOwner(token,qq);showToast('所有者已移除');loadPerms();}catch(e){showToast(sanitizeError(e.message),'error');}};
+const doAddDev=async()=>{const qq=parseInt(newDev.value);if(!qq||qq<=0){showToast('请输入有效的QQ号','error');return;}try{await addDeveloper(token,qq);showToast('开发者已添加');newDev.value='';loadPerms();}catch(e){showToast(sanitizeError(e.message),'error');}};
+const doRemoveDev=async(qq)=>{try{await removeDeveloper(token,qq);showToast('开发者已移除');loadPerms();}catch(e){showToast(sanitizeError(e.message),'error');}};
+const doAddBl=async()=>{const gid=parseInt(newBl.value);if(!gid||gid<=0){showToast('请输入有效的群号','error');return;}try{await addBlacklist(token,gid);showToast('已添加黑名单');newBl.value='';loadBlacklist();}catch(e){showToast(sanitizeError(e.message),'error');}};
+const doRemoveBl=async(gid)=>{try{await removeBlacklist(token,gid);showToast('已移除黑名单');loadBlacklist();}catch(e){showToast(sanitizeError(e.message),'error');}};
+const doRestart=async()=>{try{await restartBot(token);showRestart.value=false;showToast('机器人正在重启...');}catch(e){showToast(sanitizeError(e.message),'error');}};
+const doShutdown=async()=>{try{await shutdownBot(token);showShutdown.value=false;showToast('机器人正在关闭...');}catch(e){showToast(sanitizeError(e.message),'error');}};
+const handleWSMsg=(data)=>{if(data.type==='log'){logs.value.push(data.message);if(logs.value.length>500)logs.value.shift();scrollToBottom();}else if(data.type==='plugin_update'){loadPlugins();}else if(data.type==='permission_update'){loadPerms();}else if(data.type==='blacklist_update'){loadBlacklist();}};
+const handleWSStatus=(connected,err)=>{if(connected===null&&err==='expired'){showToast('会话已过期，请重新登录','error');doLogout();return;}if(connected===null&&err==='max_conn'){showToast('连接数过多','error');return;}wsConnected.value=connected;};
+onMounted(async()=>{if(!token||!await checkAuth(token)){clearToken();location.href='/';return;}loadStatus();loadPlugins();loadPerms();loadBlacklist();connectWS(token,handleWSMsg,handleWSStatus);refreshTimer=setInterval(loadStatus,5000);});
+onUnmounted(()=>{disconnectWS();if(refreshTimer)clearInterval(refreshTimer);});
+watch(msgTab,()=>{selected.value=null;loadContacts();});
+return{page,wsConnected,status,plugins,perms,blacklist,logs,autoScroll,logBox,msgTab,groups,friends,selected,msgContent,contactsLoading,sendingMsg,newAdmin,newOwner,newDev,newBl,showRestart,showShutdown,toast,showToast,loadLogs,loadContacts,getLogClass,doLogout,doSendMsg,doEnablePlugin,doDisablePlugin,doReloadPlugin,doAddAdmin,doRemoveAdmin,doAddOwner,doRemoveOwner,doAddDev,doRemoveDev,doAddBl,doRemoveBl,doRestart,doShutdown};
+}
+}).mount('#app');
+</script>
+</body>
+</html>

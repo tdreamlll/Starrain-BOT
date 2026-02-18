@@ -1,141 +1,105 @@
-# Starrain-BOT 配置模板
-# 将此文件复制为 config.yaml 并修改配置
+# ===================================================================
+# Starrain-BOT 配置文件
+# 请根据实际情况修改配置
+# ===================================================================
 
+# -------------------------------------------------------------------
+# OneBot 协议配置
+# -------------------------------------------------------------------
 onebot:
   connection_type: "http"
-  url: "ws://localhost:3001"
+
+  # Token 认证 (适用于 http, ws, reverse_ws 所有连接类型)
+  # 与 NapCat 配置中的 token 字段对应
   access_token: ""
-  
-  # HTTP API配置 (调用NapCat的API)
+
+  # 正向 WebSocket 地址
+  url: "ws://localhost:3001"
+
+  # HTTP API 地址
   http_url: "http://localhost:3000"
-  
-  # HTTP POST上报配置 (NapCat推送事件到你的服务器)
+  timeout: 30
+
+  # HTTP POST 事件上报配置
   http_post_enabled: true
   http_post_host: "127.0.0.1"
   http_post_port: 5700
   http_post_secret: ""
-  
-  reverse_ws_url: "ws://localhost:3002"
-  heartbeat_interval: 5
 
+  # 反向 WebSocket 地址 (NapCat 主动连接此地址)
+  reverse_ws_url: "ws://0.0.0.0:3002"
+
+# -------------------------------------------------------------------
 # 机器人配置
+# -------------------------------------------------------------------
 bot:
-  # 机器人QQ号 (必须修改为你的机器人QQ号)
   qq: 123456789
-  # 自动重连
   auto_reconnect: true
-  # 重连间隔 (毫秒)
   reconnect_interval: 5000
-  # 最大重连次数 (-1为无限制)
   max_reconnect_attempts: 10
-  # 启动时加载所有插件
-  load_all_on_startup: true
 
-# 权限管理
+# -------------------------------------------------------------------
+# 权限配置
+# -------------------------------------------------------------------
 permission:
-  # BOT管理员QQ号列表
-  # 在此处添加你的QQ号以获取管理员权限
-  admins:
-    - 987654321
-  # 启用群权限系统
+  admins: []
   enable_group_permission: true
-  # 群管理员的额外权限
-  group_admin_permissions:
-    - kick_member
-    - mute_member
 
+# -------------------------------------------------------------------
 # 插件配置
+# -------------------------------------------------------------------
 plugin:
-  # 插件目录
   dir: "./plugins"
-  # 插件数据目录（元数据及所有插件数据存放于此）
   data_dir: "data"
-  # 启动时自动加载插件
   auto_load: true
-  # 启用热重载 (文件修改时重新加载插件)
   hot_reload: true
-  # 热重载间隔 (秒)
-  hot_reload_interval: 2
-  # 插件元数据文件
   metadata_file: "plugin_metadata.json"
 
+# -------------------------------------------------------------------
 # 日志配置
+# -------------------------------------------------------------------
 log:
-  # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
   level: "INFO"
-  # 日志文件路径
   file: "logs/bot.log"
-  # 控制台输出
   console: true
-  # 彩色输出
   color: true
 
-# 图片渲染配置
+# -------------------------------------------------------------------
+# 渲染配置
+# -------------------------------------------------------------------
 renderer:
-  # 渲染引擎: puppeteer, PIL
   engine: "puppeteer"
-  # 缓存目录
   cache_dir: "./cache"
-  # 最大缓存数量
   max_cache_size: 100
-  # 默认图片宽度
   default_width: 800
-  # 默认图片高度
   default_height: 600
-  # 缓存过期时间 (秒)
   cache_expire: 3600
-  # Puppeteer浏览器配置
   puppeteer:
-    # 使用无头模式
     headless: true
-    # 等待网络空闲
     wait_network_idle: true
-    # 页面加载超时 (毫秒)
     timeout: 30000
-    # 字体设置
     fonts:
-      # 默认字体
       default: '"Microsoft YaHei", Arial, sans-serif'
-      # 标题字体
       title: '"Microsoft YaHei Bold", Arial Bold, sans-serif'
 
-# 性能优化
-performance:
-  # 异步事件处理
-  async_events: true
-  # 事件队列大小
-  event_queue_size: 1000
-  # 工作线程数
-  worker_threads: 4
-  # 数据库连接池大小
-  db_pool_size: 10
-
-# MySQL数据库配置
+# -------------------------------------------------------------------
+# MySQL 配置 (可选)
+# -------------------------------------------------------------------
 mysql:
-  # 数据库主机地址
   host: "127.0.0.1"
-  # 数据库端口
   port: 3306
-  # 数据库用户名
   user: "root"
-  # 数据库密码
   password: ""
-  # 数据库名称
   database: "starrain_bot"
-  # 字符集
   charset: "utf8mb4"
 
-# Web管理后台配置
+# -------------------------------------------------------------------
+# Web 管理后台配置
+# -------------------------------------------------------------------
 web:
-  # 是否启用Web管理后台
   enabled: true
-  # 监听地址
   host: "127.0.0.1"
-  # 监听端口
   port: 8080
-  # 访问密钥 (留空则不验证)
   secret: ""
-  # 登录用户名
   username: "admin"
-  # 登录密码
   password: "admin123"

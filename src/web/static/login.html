@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Starrain-BOT 登录</title>
+<link rel="stylesheet" href="/static/css/main.css">
+<script src="https://unpkg.com/vue@3.4.21/dist/vue.global.prod.js" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="app">
+<div class="login-container">
+<div class="login-card">
+<h1 class="login-title">Starrain-BOT</h1>
+<p class="login-subtitle">QQ机器人管理后台</p>
+<form @submit.prevent="doLogin">
+<div class="form-group">
+<label class="form-label" for="username">用户名</label>
+<input id="username" name="username" type="text" class="form-input" v-model="username" placeholder="请输入用户名" autocomplete="off">
+</div>
+<div class="form-group">
+<label class="form-label" for="password">密码</label>
+<input id="password" name="password" type="password" class="form-input" v-model="password" placeholder="请输入密码" autocomplete="off">
+</div>
+<button type="submit" class="btn btn-primary" :disabled="loading">{{ loading ? '登录中...' : '登录' }}</button>
+</form>
+<div class="toast toast-error" v-if="error">{{ error }}</div>
+</div>
+</div>
+</div>
+<script type="module">
+import{fetchWithTimeout,sanitizeError}from'/static/js/api.js';
+const{createApp,ref,onMounted}=Vue;
+createApp({
+setup(){
+const username=ref('');
+const password=ref('');
+const loading=ref(false);
+const error=ref('');
+const doLogin=async()=>{
+loading.value=true;
+error.value='';
+try{
+const res=await fetchWithTimeout('/api/login',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({username:username.value,password:password.value})
+},10000);
+const data=await res.json().catch(()=>({}));
+if(data.success){
+sessionStorage.setItem('token',data.token);
+location.href='/app';
+}else{
+error.value=data.error||'登录失败';
+}
+}catch(e){
+error.value=sanitizeError(e.message);
+}
+loading.value=false;
+};
+onMounted(()=>{
+const t=sessionStorage.getItem('token');
+if(t)fetchWithTimeout('/api/status',{headers:{'Authorization':`Bearer ${t}`}}).then(r=>{if(r.ok)location.href='/app';}).catch(()=>{});
+});
+return{username,password,loading,error,doLogin};
+}
+}).mount('#app');
+</script>
+</body>
+</html>

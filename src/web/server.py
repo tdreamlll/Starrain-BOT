@@ -14,7 +14,7 @@ from collections import defaultdict
 
 from fastapi import FastAPI, HTTPException, Depends, status, Query, WebSocket, WebSocketDisconnect, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, validator, constr
@@ -44,7 +44,7 @@ class WebConfig:
         self.secret: str = ""
         self.username: str = "admin"
         self.password_hash: str = ""
-        self._raw_password: str = "admin123"
+        self._password_set: bool = False
 
 
 web_config = WebConfig()
@@ -54,16 +54,67 @@ web_server = None
 ws_clients: Dict[str, WebSocket] = {}
 log_buffer: List[str] = []
 log_buffer_max = 500
+SENSITIVE_PATTERNS = [
+    (r'password["\']?\s*[:=]\s*["\']?[^"\'\s,}]+', 'password": "***"'),
+    (r'token["\']?\s*[:=]\s*["\']?[a-zA-Z0-9_-]{20,}', 'token": "***"'),
+    (r'access_token["\']?\s*[:=]\s*["\']?[^"\'\s,}]+', 'access_token": "***"'),
+    (r'secret["\']?\s*[:=]\s*["\']?[^"\'\s,}]+', 'secret": "***"'),
+    (r'Bearer\s+[a-zA-Z0-9_-]+', 'Bearer ***'),
+]
 
 login_attempts: Dict[str, Dict] = defaultdict(lambda: {"count": 0, "lock_until": 0})
 active_tokens: Dict[str, Dict] = {}
 rate_limits: Dict[str, List[float]] = defaultdict(list)
+ws_nonces: Dict[str, Dict] = {}
+WS_NONCE_EXPIRE_SECONDS = 60
+
+
+def generate_ws_nonce() -> str:
+    nonce = secrets.token_urlsafe(32)
+    ws_nonces[nonce] = {
+        "created": datetime.now(),
+        "expires": datetime.now() + timedelta(seconds=WS_NONCE_EXPIRE_SECONDS)
+    }
+    expired = [n for n, d in ws_nonces.items() if datetime.now() > d["expires"]]
+    for n in expired:
+        del ws_nonces[n]
+    return nonce
+
+
+def verify_ws_signature(nonce: str, signature: str) -> str:
+    if nonce not in ws_nonces:
+        return None
+    nonce_data = ws_nonces[nonce]
+    if datetime.now() > nonce_data["expires"]:
+        del ws_nonces[nonce]
+        return None
+    for token, token_info in active_tokens.items():
+        if datetime.now() > token_info["expires"]:
+            continue
+        expected = hashlib.sha256(f"{nonce}:{token}".encode()).hexdigest()
+        if secrets.compare_digest(signature, expected):
+            del ws_nonces[nonce]
+            return token
+    return None
+
+
+def sanitize_log_message(message: str) -> str:
+    import re
+    sanitized = message
+    ansi_escape = re.compile(r'\x1b\[[0-9;]*m|\033\[[0-9;]*m|\[\d+(?:;\d+)*m')
+    sanitized = ansi_escape.sub('', sanitized)
+    colorlog_pattern = re.compile(r'\[(?:\d+;)*\d+m|\[m')
+    sanitized = colorlog_pattern.sub('', sanitized)
+    for pattern, replacement in SENSITIVE_PATTERNS:
+        sanitized = re.sub(pattern, replacement, sanitized, flags=re.IGNORECASE)
+    return sanitized
 
 
 class LogHandler(logging.Handler):
     def emit(self, record):
         global log_buffer
         log_line = self.format(record)
+        log_line = sanitize_log_message(log_line)
         log_buffer.append(log_line)
         if len(log_buffer) > log_buffer_max:
             log_buffer = log_buffer[-log_buffer_max:]
@@ -85,11 +136,14 @@ def generate_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def is_valid_token(token: str) -> bool:
+def is_valid_token(token: str, client_ip: str = None) -> bool:
     if token not in active_tokens:
         return False
     token_info = active_tokens[token]
     if datetime.now() > token_info["expires"]:
+        del active_tokens[token]
+        return False
+    if client_ip and token_info.get("ip") and token_info["ip"] != client_ip:
         del active_tokens[token]
         return False
     return True
@@ -130,6 +184,7 @@ def reset_login_attempts(ip: str):
 def init_web(bot, config: dict):
     global bot_instance, web_config, web_app
     bot_instance = bot
+    _logger = get_logger()
     
     web_cfg = config.get('web', {})
     web_config.enabled = web_cfg.get('enabled', True)
@@ -138,10 +193,22 @@ def init_web(bot, config: dict):
     web_config.secret = web_cfg.get('secret', '')
     web_config.username = web_cfg.get('username', 'admin')
     
-    password = web_cfg.get('password', 'admin123')
-    web_config._raw_password = password
+    password = web_cfg.get('password', '')
+    if not password:
+        password = secrets.token_urlsafe(12)
+        _logger.warning(f"未设置Web密码，已自动生成随机密码: {password}")
+        _logger.warning("请在 config.yaml 中设置 web.password 以使用自定义密码")
     salt, hashed = hash_password(password)
     web_config.password_hash = f"{salt}:{hashed}"
+    web_config._password_set = bool(web_cfg.get('password', ''))
+    
+    if web_config.host not in ('127.0.0.1', 'localhost'):
+        _logger.warning("=" * 60)
+        _logger.warning("安全警告: Web后台监听非本地地址!")
+        _logger.warning(f"当前监听: {web_config.host}:{web_config.port}")
+        _logger.warning("建议使用反向代理(如Nginx)配置HTTPS后再对外暴露")
+        _logger.warning("否则Token将以明文形式传输，存在被窃取风险!")
+        _logger.warning("=" * 60)
     
     log_handler = LogHandler()
     log_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
@@ -178,16 +245,16 @@ async def verify_auth(
     
     token = credentials.credentials
     
-    if not is_valid_token(token):
+    if not is_valid_token(token, client_ip):
         raise HTTPException(status_code=401, detail="Token无效或已过期")
     
     return True
 
 
-async def verify_ws_token(token: str) -> bool:
+async def verify_ws_token(token: str, client_ip: str = None) -> bool:
     if not token:
         return False
-    return is_valid_token(token)
+    return is_valid_token(token, client_ip)
 
 
 class LoginRequest(BaseModel):
@@ -265,9 +332,21 @@ def create_app() -> FastAPI:
         redoc_url=None
     )
     
+    cors_origins = [
+        f"http://localhost:{web_config.port}",
+        f"http://127.0.0.1:{web_config.port}",
+    ]
+    if web_config.host == "0.0.0.0":
+        import socket
+        try:
+            local_ip = socket.gethostbyname(socket.gethostname())
+            cors_origins.append(f"http://{local_ip}:{web_config.port}")
+        except Exception:
+            pass
+    
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"] if web_config.host == "0.0.0.0" else [f"http://localhost:{web_config.port}"],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST"],
         allow_headers=["Authorization", "Content-Type"],
@@ -283,14 +362,32 @@ def create_app() -> FastAPI:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()"
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, proxy-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
         return response
     
     @app.get("/", response_class=HTMLResponse)
     async def index():
-        html_file = static_dir / "index.html"
-        if html_file.exists():
-            return FileResponse(html_file, media_type="text/html")
+        login_file = static_dir / "login.html"
+        if login_file.exists():
+            return FileResponse(login_file, media_type="text/html")
         return HTMLResponse(content=get_fallback_html(), status_code=200)
+    
+    @app.get("/app", response_class=HTMLResponse)
+    async def app_page():
+        app_file = static_dir / "app.html"
+        if app_file.exists():
+            return FileResponse(app_file, media_type="text/html")
+        return HTMLResponse(content=get_fallback_html(), status_code=200)
+    
+    @app.get("/robots.txt")
+    async def robots():
+        robots_file = static_dir / "robots.txt"
+        if robots_file.exists():
+            return FileResponse(robots_file, media_type="text/plain")
+        return PlainTextResponse("User-agent: *\nDisallow: /")
     
     @app.post("/api/login")
     async def login(request: Request, req: LoginRequest):
@@ -309,7 +406,7 @@ def create_app() -> FastAPI:
         try:
             parts = web_config.password_hash.split(":")
             if len(parts) != 2:
-                is_valid = secrets.compare_digest(req.password, web_config._raw_password)
+                is_valid = False
             else:
                 salt, stored_hash = parts
                 is_valid = verify_password(req.password, salt, stored_hash)
@@ -341,6 +438,11 @@ def create_app() -> FastAPI:
             if token in active_tokens:
                 del active_tokens[token]
         return {"success": True, "message": "已退出登录"}
+    
+    @app.get("/api/ws/nonce")
+    async def get_ws_nonce(auth: bool = Depends(verify_auth)):
+        nonce = generate_ws_nonce()
+        return {"nonce": nonce, "expires_in": WS_NONCE_EXPIRE_SECONDS}
     
     @app.get("/api/status")
     async def get_status(auth: bool = Depends(verify_auth)):
@@ -509,7 +611,7 @@ def create_app() -> FastAPI:
                 try:
                     with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
                         all_lines = f.readlines()
-                        log_buffer = [line.strip() for line in all_lines[-log_buffer_max:]]
+                        log_buffer = [sanitize_log_message(line.strip()) for line in all_lines[-log_buffer_max:]]
                 except Exception:
                     return {"logs": [], "error": "无法读取日志"}
         
@@ -615,18 +717,43 @@ def create_app() -> FastAPI:
     
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
-        token = websocket.query_params.get("token")
+        client_ip = websocket.client.host if websocket.client else "unknown"
         
-        if not token or not await verify_ws_token(token):
-            await websocket.close(code=4001, reason="Unauthorized")
+        await websocket.accept()
+        
+        try:
+            auth_msg = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
+            auth_data = json.loads(auth_msg)
+            nonce = auth_data.get("nonce")
+            signature = auth_data.get("signature")
+        except (asyncio.TimeoutError, json.JSONDecodeError, Exception):
+            await websocket.close(code=4001, reason="Auth timeout or invalid")
+            return
+        
+        if not nonce or not signature:
+            await websocket.close(code=4001, reason="Missing nonce or signature")
+            return
+        
+        token = verify_ws_signature(nonce, signature)
+        if not token:
+            await websocket.close(code=4001, reason="Invalid signature")
+            return
+        
+        token_info = active_tokens.get(token)
+        if not token_info or datetime.now() > token_info["expires"]:
+            await websocket.close(code=4001, reason="Token expired")
+            return
+        
+        if token_info.get("ip") and token_info["ip"] != client_ip:
+            await websocket.close(code=4001, reason="IP mismatch")
             return
         
         if len(ws_clients) >= MAX_WS_CONNECTIONS:
             await websocket.close(code=4003, reason="Too many connections")
             return
         
-        await websocket.accept()
         ws_clients[token] = websocket
+        await websocket.send_text(json.dumps({"type": "auth", "status": "ok"}))
         
         try:
             while True:

@@ -1,98 +1,124 @@
-# Starrain-BOT Configuration Template
-# Copy this file to config.yaml and modify the settings
+# ===================================================================
+# Starrain-BOT 配置文件模板
+# 将此文件复制为 config.yaml 并根据实际情况修改
+# ===================================================================
 
-# OneBot配置
+# -------------------------------------------------------------------
+# OneBot 协议配置
+# 用于连接 NapCat 或其他 OneBot v11 兼容端
+# -------------------------------------------------------------------
 onebot:
-  # 连接类型 (只能选择一种): ws, reverse_ws, http
-  # ws: 主动连接NapCat的WebSocket服务器 (正向连接)
-  # reverse_ws: NapCat主动连接到机器人的WebSocket服务器 (反向连接)
-  # http: 使用HTTP API调用NapCat，同时接收NapCat的HTTP POST事件上报
+  # 连接类型 (必填，只能选择一种)
+  # - http: HTTP API 调用 + HTTP POST 事件上报 (推荐)
+  # - ws: 主动连接 WebSocket 服务器 (正向 WS)
+  # - reverse_ws: 接收 WebSocket 连接 (反向 WS)
   connection_type: "http"
-  
-  # 正向WebSocket配置 (connection_type为ws时使用)
-  url: "ws://localhost:3001"
-  
-  # 访问令牌 (NapCat中设置的access_token，未设置则留空)
+
+  # ============== Token 认证配置 ==============
+  # 适用于所有连接类型 (http, ws, reverse_ws)
+  # 与 NapCat 配置中的 token 字段对应
+  # 
+  # NapCat 配置位置:
+  # - HTTP: WebUI -> 网络配置 -> HTTP服务器 -> token
+  # - 正向WS: WebUI -> 网络配置 -> WebSocket服务器 -> token
+  # - 反向WS: WebUI -> 网络配置 -> 反向WebSocket -> token
+  # 
+  # 认证方式: Authorization: Bearer {access_token}
+  # 如果 NapCat 中 token 为空，此处也留空
   access_token: ""
+
+  # ============== 正向 WebSocket 配置 ==============
+  # connection_type 为 "ws" 时使用
+  # NapCat WebUI -> 网络配置 -> WebSocket服务器 -> 地址
+  url: "ws://localhost:3001"
+
+  # ============== HTTP 配置 ==============
+  # connection_type 为 "http" 时使用
   
-  # ============== HTTP配置 (connection_type为http时使用) ==============
-  # NapCat HTTP API地址 (用于调用NapCat的API)
+  # NapCat HTTP API 地址 (调用 NapCat 接口)
+  # NapCat WebUI -> 网络配置 -> HTTP服务器 -> 主机:端口
   http_url: "http://localhost:3000"
   
-  # HTTP POST上报服务器配置 (接收NapCat推送的事件)
-  # NapCat需要配置httpClients指向此地址
+  # API 请求超时时间 (秒)
+  timeout: 30
+  
+  # ============== HTTP POST 事件上报配置 ==============
+  # 接收 NapCat 推送的事件
+  
+  # 是否启用 HTTP POST 服务器
   http_post_enabled: true
+  # 监听地址 (0.0.0.0 接受所有来源，127.0.0.1 仅本机)
   http_post_host: "0.0.0.0"
+  # 监听端口
   http_post_port: 5700
   
-  # HTTP POST签名密钥 (与NapCat中httpClients的secret对应，留空则不验证)
+  # HTTP POST 签名验证 (可选，增强安全性)
+  # 对应 NapCat WebUI -> 网络配置 -> HTTP客户端 -> 密钥
+  # 签名算法: HMAC-SHA1，请求头 X-Signature: sha1={signature}
   http_post_secret: ""
-  
-  # API请求超时时间 (秒)
-  timeout: 30
 
-  
-  # 反向WebSocket配置 (connection_type为reverse_ws时使用)
-  reverse_ws_url: "ws://localhost:3002"
-  
-  # 心跳间隔 (秒)
-  heartbeat_interval: 5
+  # ============== 反向 WebSocket 配置 ==============
+  # connection_type 为 "reverse_ws" 时使用
+  # NapCat WebUI -> 网络配置 -> 反向WebSocket -> 地址
+  # 本机监听地址，NapCat 会主动连接此地址
+  reverse_ws_url: "ws://0.0.0.0:3002"
 
-# 机器人配置
+# -------------------------------------------------------------------
+# 机器人核心配置
+# -------------------------------------------------------------------
 bot:
-  # 机器人QQ号 (必须修改为你的机器人QQ号)
+  # 机器人 QQ 号 (必填)
   qq: 123456789
-  
-  # 自动重连
+
+  # 自动重连配置
   auto_reconnect: true
-  
   # 重连间隔 (毫秒)
   reconnect_interval: 5000
-  
-  # 最大重连次数 (-1为无限制)
+  # 最大重连次数 (-1 为无限制)
   max_reconnect_attempts: 10
-  
-  # 启动时加载所有插件
-  load_all_on_startup: true
 
-# 权限管理（五级：1=普通用户 2=群主/管理员 3=机器人管理员 4=所有者 5=开发者）
-# 3/4/5 级账号存于 data/admins_l3.json、data/owners_l4.json、data/developers_l5.json
+# -------------------------------------------------------------------
+# 权限管理配置
+# 权限等级: 1=普通用户, 2=群管理, 3=机器人管理员, 4=所有者, 5=开发者
+# 3/4/5 级账号存储在 data/ 目录下的 JSON 文件中
+# -------------------------------------------------------------------
 permission:
-  # 可选：首次运行时可从 admins 迁入 3 级
+  # 初始管理员 QQ 号列表 (首次运行时写入 data/admins_l3.json)
   admins: []
+  # 启用群权限系统
   enable_group_permission: true
 
-# 插件配置
+# -------------------------------------------------------------------
+# 插件系统配置
+# -------------------------------------------------------------------
 plugin:
+  # 插件目录
   dir: "./plugins"
+  # 插件数据目录
   data_dir: "data"
   # 启动时自动加载插件
   auto_load: true
-  
-  # 启用热重载 (文件修改时重新加载插件)
+  # 启用热重载 (文件修改时自动重新加载)
   hot_reload: true
-  
-  # 热重载间隔 (秒)
-  hot_reload_interval: 2
-  
-  # 插件元数据文件
+  # 插件元数据文件名
   metadata_file: "plugin_metadata.json"
 
+# -------------------------------------------------------------------
 # 日志配置
+# -------------------------------------------------------------------
 log:
   # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
   level: "INFO"
-  
   # 日志文件路径
   file: "logs/bot.log"
-  
-  # 控制台输出
+  # 是否输出到控制台
   console: true
-  
-  # 彩色输出
+  # 是否启用彩色输出
   color: true
 
+# -------------------------------------------------------------------
 # 图片渲染配置
+# -------------------------------------------------------------------
 renderer:
   # 渲染引擎: puppeteer, PIL
   engine: "puppeteer"
@@ -100,81 +126,59 @@ renderer:
   cache_dir: "./cache"
   # 最大缓存数量
   max_cache_size: 100
-  # 默认图片宽度
+  # 默认图片宽度 (像素)
   default_width: 800
-  # 默认图片高度
+  # 默认图片高度 (像素)
   default_height: 600
   # 缓存过期时间 (秒)
   cache_expire: 3600
-  # Puppeteer Browser Configuration (for plugins that use MySQL)
-  # Puppeteer浏览器配置 (用于插件)
+
+  # Puppeteer 浏览器配置
   puppeteer:
-    # Use headless mode
-    # 使用无头模式
+    # 无头模式 (推荐开启)
     headless: true
-    # Wait for network to be idle
     # 等待网络空闲
     wait_network_idle: true
-    # Page load timeout (milliseconds)
     # 页面加载超时 (毫秒)
     timeout: 30000
-    # Font settings
     # 字体设置
     fonts:
-      # Default font
       # 默认字体
       default: '"Microsoft YaHei", Arial, sans-serif'
-      # Title font
       # 标题字体
       title: '"Microsoft YaHei Bold", Arial Bold, sans-serif'
 
-# 性能优化
-performance:
-  # 异步事件处理
-  async_events: true
-  
-  # 事件队列大小
-  event_queue_size: 1000
-  
-  # 工作线程数
-  worker_threads: 4
-  
-  # 数据库连接池大小
-  db_pool_size: 10
-
-# MySQL Database Configuration (for plugins that use MySQL)
+# -------------------------------------------------------------------
+# MySQL 数据库配置 (可选)
+# 部分插件需要 MySQL 支持
+# -------------------------------------------------------------------
 mysql:
-  # Database host address
+  # 数据库主机地址
   host: "127.0.0.1"
-  # Database port
+  # 数据库端口
   port: 3306
-  # Database username
+  # 数据库用户名
   user: "root"
-  # Database password (set your MySQL password here)
+  # 数据库密码
   password: ""
-  # Database name
+  # 数据库名称
   database: "starrain_bot"
-  # Character set
+  # 字符集
   charset: "utf8mb4"
 
-# Web Admin Panel Configuration
-# Web管理后台配置
+# -------------------------------------------------------------------
+# Web 管理后台配置
+# -------------------------------------------------------------------
 web:
-  # Enable web admin panel
-  # 是否启用Web管理后台
+  # 是否启用 Web 管理后台
   enabled: true
-  # Listen address
-  # 监听地址
-  host: "0.0.0.0"
-  # Listen port
+  # 监听地址 (127.0.0.1 仅本机访问，0.0.0.0 允许外网访问)
+  host: "127.0.0.1"
   # 监听端口
   port: 8080
-  # Access secret (leave empty to disable authentication)
-  # 访问密钥 (留空则不验证)
+  # 访问密钥 (留空则不验证，不推荐)
   secret: ""
-  # Login username
   # 登录用户名
   username: "admin"
-  # Login password
-  # 登录密码
+  # 登录密码 (生产环境请修改为强密码!)
   password: "admin123"

@@ -39,3 +39,8 @@ save/
 /.vs
 /data
 /docs
+
+# Sensitive config
+config/config.yaml
+*.local.yaml
+*.secret.yaml
