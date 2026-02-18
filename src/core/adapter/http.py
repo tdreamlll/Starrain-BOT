@@ -64,6 +64,7 @@ class HTTPAdapter(BaseAdapter):
                 )
             
             if not self._server_started:
+                _get_logger().success(f"[HTTP] API服务已启动: {self.api_url}")
                 if not await self._start_post_server():
                     return False
             
